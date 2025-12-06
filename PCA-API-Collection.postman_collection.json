@@ -1,0 +1,307 @@
+{
+  "info": {
+    "name": "PCA Backend APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman collection for Player Cricket Academy (PCA) backend APIs. Set {{baseUrl}} to your server (e.g. http://localhost:8080)."
+  },
+  "item": [
+    {
+      "name": "Groups",
+      "item": [
+        {
+          "name": "Create Group",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Junior\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/groups",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","groups"]
+            },
+            "description": "Create a group (e.g., Junior, Senior)."
+          }
+        },
+        {
+          "name": "List Groups",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/groups",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","groups"]
+            },
+            "description": "Get all groups."
+          }
+        }
+      ]
+    },
+    {
+      "name": "FeeStructure",
+      "item": [
+        {
+          "name": "Create Fee Structure",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupId\": 1,\n  \"monthlyFee\": 500.0,\n  \"effectiveFrom\": \"2025-12-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/fees",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","fees"]
+            },
+            "description": "Create fee structure for a group."
+          }
+        },
+        {
+          "name": "Get Fee History for Group",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/fees/group/{{groupId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","fees","group","{{groupId}}"]
+            },
+            "description": "Replace {{groupId}} with numeric id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Players",
+      "item": [
+        {
+          "name": "Create Player",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Aman Kumar\",\n  \"phone\": \"9876543210\",\n  \"age\": 12,\n  \"joinDate\": \"2025-11-25\",\n  \"groupId\": 1,\n  \"notes\": \"Left-hand batsman\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/players",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","players"]
+            },
+            "description": "Create a player and assign to a group."
+          }
+        },
+        {
+          "name": "List Players",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/players",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","players"]
+            },
+            "description": "Get list of all players."
+          }
+        },
+        {
+          "name": "Get Player by Id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/players/{{playerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","players","{{playerId}}"]
+            },
+            "description": "Get a player by id; replace {{playerId}}."
+          }
+        },
+        {
+          "name": "Update Player",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Aman Kumar\",\n  \"phone\": \"9998887776\",\n  \"age\": 13,\n  \"joinDate\": \"2025-11-25\",\n  \"groupId\": 1,\n  \"notes\": \"Updated note\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/players/{{playerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","players","{{playerId}}"]
+            },
+            "description": "Update fields for a player."
+          }
+        },
+        {
+          "name": "Delete Player",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/players/{{playerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","players","{{playerId}}"]
+            },
+            "description": "Delete a player by id."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Installments",
+      "item": [
+        {
+          "name": "Generate Monthly Installments (bulk)",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/installments/generate-monthly?month=12&year=2025&dueDate=2025-12-10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","installments","generate-monthly"],
+              "query": [
+                { "key": "month", "value": "12" },
+                { "key": "year", "value": "2025" },
+                { "key": "dueDate", "value": "2025-12-10" }
+              ]
+            },
+            "description": "Generate installments for all players for a given month/year and dueDate."
+          }
+        },
+        {
+          "name": "Create Single Installment (per player)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"playerId\": 100,\n  \"periodMonth\": 12,\n  \"periodYear\": 2025,\n  \"dueDate\": \"2025-12-10\",\n  \"amount\": 500.0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/installments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","installments"]
+            },
+            "description": "Create a single installment for a player."
+          }
+        },
+        {
+          "name": "Get Installments by Player",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/installments/player/{{playerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","installments","player","{{playerId}}"]
+            },
+            "description": "Fetch installments for a particular player."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Record Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"installmentId\": 345,\n  \"amount\": 300.0,\n  \"paymentMethod\": \"UPI\",\n  \"reference\": \"UPI-ABC-123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","payments"]
+            },
+            "description": "Record a payment against an installment."
+          }
+        },
+        {
+          "name": "Get Payments by Installment",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/installment/{{installmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","payments","installment","{{installmentId}}"]
+            },
+            "description": "Get payment history for an installment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reminders",
+      "item": [
+        {
+          "name": "Create Reminder",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"installmentId\": 345,\n  \"type\": \"UPCOMING\",\n  \"triggeredBy\": \"COACH\",\n  \"snoozeDate\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/reminders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","reminders"]
+            },
+            "description": "Create/send a reminder (logs ReminderHistory)."
+          }
+        },
+        {
+          "name": "Get Reminder History by Installment",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/reminders/installment/{{installmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","reminders","installment","{{installmentId}}"]
+            },
+            "description": "Get reminders logged for an installment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"coach1\",\n  \"password\": \"secret123\",\n  \"fullName\": \"Coach One\",\n  \"role\": \"ROLE_COACH\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","users"]
+            },
+            "description": "Create an app user (password will be encoded by backend)."
+          }
+        },
+        {
+          "name": "Get User",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","users","{{userId}}"]
+            },
+            "description": "Get user by id."
+          }
+        }
+      ]
+    }
+  ]
+}
