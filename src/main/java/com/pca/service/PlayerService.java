@@ -6,6 +6,8 @@ import com.pca.exception.ResourceNotFoundException;
 import com.pca.model.GroupEntity;
 import com.pca.model.Player;
 import com.pca.repository.GroupRepository;
+import com.pca.repository.InstallmentRepository;
+import com.pca.repository.PaymentRepository;
 import com.pca.repository.PlayerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,10 @@ public class PlayerService {
 
     private final PlayerRepository playerRepository;
     private final GroupRepository groupRepository;
+    private final InstallmentRepository installmentRepository;
+    private final PaymentRepository paymentRepository;
+
+
 
     @Transactional
     public PlayerResponseDTO createPlayer(PlayerRequestDTO req) {
@@ -72,12 +78,16 @@ public class PlayerService {
     }
 
     @Transactional
-    public void deletePlayer(Long id) {
-        log.info("Deleting player {}", id);
-        if (!playerRepository.existsById(id)) throw new ResourceNotFoundException("Player not found: " + id);
-        playerRepository.deleteById(id);
-    }
+    public void deletePlayer(Long playerId) {
+        // 1) delete payments that belong to installments of this player
+        paymentRepository.deleteByPlayerId(playerId);
 
+        // 2) delete installments for the player
+        installmentRepository.deleteByPlayerId(playerId);
+
+        // 3) delete the player
+        playerRepository.deleteById(playerId);
+    }
     public Player findByIdOrThrow(Long id) {
         return playerRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Player not found: " + id));
     }

@@ -5,8 +5,12 @@ import com.pca.dto.FeeStructureResponseDTO;
 import com.pca.service.FeeStructureService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
+
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -27,4 +31,19 @@ public class FeeStructureController {
     public List<FeeStructureResponseDTO> getAllByGroup(@PathVariable Long groupId) {
         return feeService.getFeeHistory(groupId);
     }
+
+    // FeeStructureController.java (add)
+    @GetMapping("/group/{groupId}/effective")
+    public ResponseEntity<FeeStructureResponseDTO> getEffective(
+            @PathVariable Long groupId,
+            @RequestParam(required = false) String date // yyyy-MM-dd optional
+    ) {
+        LocalDate onDate = (date == null) ? LocalDate.now() : LocalDate.parse(date);
+        FeeStructureResponseDTO dto = feeService.getEffectiveFeeForGroup(groupId, onDate);
+        if (dto == null) {
+            return ResponseEntity.status(HttpStatus.NO_CONTENT).build(); // or 404 if you prefer
+        }
+        return ResponseEntity.ok(dto);
+    }
+
 }

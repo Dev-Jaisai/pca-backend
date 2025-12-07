@@ -27,4 +27,12 @@ public class GroupController {
     public List<GroupResponseDTO> getAll() {
         return groupService.getAllGroups();
     }
+
+    // GroupController.java
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        log.info("Deleting group id={}", id);
+        groupService.deleteGroup(id);
+    }
+
 }

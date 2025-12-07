@@ -65,4 +65,15 @@ public class FeeStructureService {
                 .effectiveTo(f.getEffectiveTo())
                 .build();
     }
+    // FeeStructureService.java (add)
+    public FeeStructureResponseDTO getEffectiveFeeForGroup(Long groupId, LocalDate onDate) {
+        GroupEntity group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new ResourceNotFoundException("Group not found: " + groupId));
+        FeeStructure f = findEffectiveFeeForGroup(group, onDate);
+        if (f == null) {
+            return null; // caller (controller) will handle 404/204
+        }
+        return toDto(f);
+    }
+
 }

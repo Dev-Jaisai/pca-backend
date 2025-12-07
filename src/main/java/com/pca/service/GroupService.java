@@ -5,6 +5,7 @@ import com.pca.dto.GroupResponseDTO;
 import com.pca.exception.ResourceNotFoundException;
 import com.pca.model.GroupEntity;
 import com.pca.repository.GroupRepository;
+import com.pca.repository.PlayerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 public class GroupService {
 
     private final GroupRepository groupRepository;
+    private final PlayerRepository playerRepository;
 
     @Transactional
     public GroupResponseDTO createGroup(GroupRequestDTO request) {
@@ -44,5 +46,18 @@ public class GroupService {
                 .id(e.getId())
                 .name(e.getName())
                 .build();
+    }
+
+    @Transactional
+    public void deleteGroup(Long id) {
+        GroupEntity group = groupRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Group not found: " + id));
+
+        // check if any players belong to this group
+        if (playerRepository.existsByGroupId(id)) {
+            throw new IllegalStateException("Cannot delete group: players are assigned to this group");
+        }
+
+        groupRepository.delete(group);
     }
 }

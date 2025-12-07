@@ -7,6 +7,6 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class GroupResponseDTO {
-    private Long id;
+    private Long id;//groupId
     private String name;
 }
