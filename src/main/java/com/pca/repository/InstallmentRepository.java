@@ -2,6 +2,7 @@ package com.pca.repository;
 
 import com.pca.model.Installment;
 import com.pca.model.Installment.Status;
+import com.pca.repository.proj.PlayerInstallmentSummaryProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -46,4 +47,46 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
             @Param("month") Integer month,
             @Param("year") Integer year
     );
+
+
+    /**
+     * Native query that aggregates payments for each installment using period_month and period_year columns.
+     * <p>
+     * NOTE:
+     * - uses actual DB column names: period_month, period_year, player_id, due_date, amount
+     * - expects payment.installment_id linking to installment.id
+     * - p.join_date assumed to be the column for Player.joinDate
+     * <p>
+     * Parameters: periodMonth (1..12), periodYear (e.g. 2025)
+     */
+    @Query(value = "SELECT " +
+            " p.id AS playerId, " +
+            " p.name AS playerName, " +
+            " p.phone AS phone, " +
+            " g.name AS groupName, " +
+            " p.join_date AS joinDate, " +
+            " i.amount AS installmentAmount, " +
+            " COALESCE(SUM(pay.amount), 0) AS totalPaid, " +
+            " i.due_date AS dueDate, " +
+            " i.id AS installmentId " +
+            "FROM installment i " +
+            "JOIN player p ON i.player_id = p.id " +
+            "LEFT JOIN payment pay ON pay.installment_id = i.id " +
+            "LEFT JOIN player_group g ON p.group_id = g.id " +
+            "WHERE i.period_month = :periodMonth AND i.period_year = :periodYear " +
+            "GROUP BY p.id, p.name, p.phone, g.name, p.join_date, i.amount, i.due_date, i.id",
+            nativeQuery = true)
+    List<PlayerInstallmentSummaryProjection> findSummaryByPeriod(
+            @Param("periodMonth") Integer periodMonth,
+            @Param("periodYear") Integer periodYear);
+
+
+    List<Installment> findByPlayerIdAndPeriodMonthAndPeriodYear(Long playerId, int periodMonth, int periodYear);
+
+    // native query to get latest period — adapt column names if different in DB mapping
+    @Query(value = "SELECT i.period_year, i.period_month FROM installment i " +
+            "ORDER BY i.period_year DESC, i.period_month DESC LIMIT 1",
+            nativeQuery = true)
+    Object[] findLatestPeriodNative();
 }
+
