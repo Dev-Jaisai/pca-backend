@@ -92,5 +92,16 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
     // helper: get installment ids for a player
     @Query("select i.id from Installment i where i.player.id = :playerId")
     List<Long> findIdsByPlayerId(Long playerId);
+
+    @Modifying
+    @Transactional
+    @Query("delete from Installment i where i.player.id in :playerIds")
+    void deleteByPlayerIds(@Param("playerIds") List<Long> playerIds);
+
+    // Also add this method to find installments by multiple player IDs
+    @Query("select i from Installment i where i.player.id in :playerIds")
+    List<Installment> findByPlayerIds(@Param("playerIds") List<Long> playerIds);
+
+    
 }
 

@@ -26,8 +26,7 @@ public class Player {
 
     @ManyToOne
     @JoinColumn(name = "group_id")
-    private GroupEntity group;
-
+    private GroupEntity playerGroup; // NEW NAME
     @Column(length = 1024)
     private String notes;
 

@@ -7,19 +7,20 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
-
 @Repository
 public interface PlayerRepository extends JpaRepository<Player, Long> {
-    List<Player> findByGroupId(Long groupId);
+
+    @Query("SELECT p.id FROM Player p WHERE p.playerGroup.id = :groupId")
+    List<Long> findIdByGroupId(@Param("groupId") Long groupId);
+
     @Modifying
     @Transactional
-    @Query("delete from Payment p where p.installment.player.id = :playerId")
-    void deleteByPlayerId(@Param("playerId") Long playerId);
+    @Query("DELETE FROM Player p WHERE p.playerGroup.id = :groupId")
+    void deleteByGroupId(@Param("groupId") Long groupId);
 
-    boolean existsByGroupId(Long groupId);
+    boolean existsByPlayerGroupId(Long groupId);
 
-
-
+    // remove any duplicate or incorrect methods named deleteByPlayerId without @Query
+    // JpaRepository already provides deleteById(Long id)
 }

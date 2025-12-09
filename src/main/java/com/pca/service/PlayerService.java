@@ -25,8 +25,6 @@ public class PlayerService {
     private final PaymentRepository paymentRepository;
     private final ReminderHistoryRepository reminderHistoryRepository;
 
-
-
     @Transactional
     public PlayerResponseDTO createPlayer(PlayerRequestDTO req) {
         log.info("Creating player {}", req.getName());
@@ -38,7 +36,7 @@ public class PlayerService {
                 .phone(req.getPhone())
                 .age(req.getAge())
                 .joinDate(req.getJoinDate())
-                .group(group)
+                .playerGroup(group) // FIX 1: Changed from .group(group)
                 .notes(req.getNotes())
                 .photoUrl(req.getPhotoUrl())
                 .build();
@@ -67,13 +65,15 @@ public class PlayerService {
         if (req.getGroupId() != null) {
             GroupEntity group = groupRepository.findById(req.getGroupId())
                     .orElseThrow(() -> new ResourceNotFoundException("Group not found: " + req.getGroupId()));
-            p.setGroup(group);
+            p.setPlayerGroup(group); // FIX 2: Changed from .setGroup(group)
         }
         p.setNotes(req.getNotes());
         p.setPhotoUrl(req.getPhotoUrl());
         Player updated = playerRepository.save(p);
         return toDto(updated);
-    }@Transactional
+    }
+
+    @Transactional
     public void deletePlayer(Long playerId) {
         // 0. optional: log / debug
         log.info("Deleting player {} and related payments/installments/reminders", playerId);
@@ -107,8 +107,9 @@ public class PlayerService {
                 .phone(p.getPhone())
                 .age(p.getAge())
                 .joinDate(p.getJoinDate())
-                .groupId(p.getGroup() != null ? p.getGroup().getId() : null)
-                .groupName(p.getGroup() != null ? p.getGroup().getName() : null)
+                // FIX 3: Changed from .getGroup() to .getPlayerGroup()
+                .groupId(p.getPlayerGroup() != null ? p.getPlayerGroup().getId() : null)
+                .groupName(p.getPlayerGroup() != null ? p.getPlayerGroup().getName() : null)
                 .notes(p.getNotes())
                 .photoUrl(p.getPhotoUrl())
                 .build();

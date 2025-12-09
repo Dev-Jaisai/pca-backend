@@ -3,18 +3,15 @@ package com.pca.service;
 import com.pca.dto.InstallmentRequestDTO;
 import com.pca.dto.InstallmentResponseDTO;
 import com.pca.dto.LatestInstallmentMonthDTO;
-import com.pca.dto.PlayerInstallmentSummaryDTO;
 import com.pca.exception.ResourceNotFoundException;
 import com.pca.model.*;
 import com.pca.repository.InstallmentRepository;
 import com.pca.repository.PlayerRepository;
-import com.pca.repository.proj.PlayerInstallmentSummaryProjection;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
@@ -27,8 +24,7 @@ public class InstallmentService {
 
     private final InstallmentRepository installmentRepository;
     private final PlayerRepository playerRepository;
-    private final FeeStructureService feeStructureService; // uses FeeStructureRepository internally
-
+    private final FeeStructureService feeStructureService;
 
     /**
      * Called by controller to generate monthly installments for all players.
@@ -53,10 +49,12 @@ public class InstallmentService {
                 continue;
             }
 
-            // get effective fee for player's group
-            FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(p.getGroup(), today);
+            // FIX 1: Updated p.getGroup() to p.getPlayerGroup()
+            FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(p.getPlayerGroup(), today);
             if (fee == null) {
-                log.warn("No fee found for player {} in group {}", p.getId(), p.getGroup() == null ? "null" : p.getGroup().getName());
+                // FIX 2: Updated p.getGroup() to p.getPlayerGroup() for logging
+                log.warn("No fee found for player {} in group {}", p.getId(),
+                        p.getPlayerGroup() == null ? "null" : p.getPlayerGroup().getName());
                 continue;
             }
 
@@ -75,6 +73,7 @@ public class InstallmentService {
             log.info("Created installment {} for player {}", ins.getId(), p.getId());
         }
     }
+
     @Transactional
     public InstallmentResponseDTO createInstallment(InstallmentRequestDTO req) {
         log.info("Creating installment for player {}", req.getPlayerId());
@@ -83,8 +82,8 @@ public class InstallmentService {
 
         Double amount = req.getAmount();
         if (amount == null) {
-            // fetch effective fee
-            FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(player.getGroup(), LocalDate.now());
+            // FIX 3: Updated player.getGroup() to player.getPlayerGroup()
+            FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(player.getPlayerGroup(), LocalDate.now());
             if (fee == null) throw new IllegalArgumentException("No fee structure for player's group");
             amount = fee.getMonthlyFee();
         }
@@ -132,22 +131,16 @@ public class InstallmentService {
         try {
             row = installmentRepository.findLatestPeriodNative();
         } catch (Exception e) {
-            // log but continue to fallback
             log.debug("findLatestPeriodNative failed or returned null: {}", e.getMessage());
         }
 
         if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
-            // native query returns numbers (BigInteger/Integer) depending on DB driver
             int year = ((Number) row[0]).intValue();
             int month = ((Number) row[1]).intValue();
             return new LatestInstallmentMonthDTO(year, month);
         }
 
-        // fallback: return current month/year if no installments yet
         LocalDate now = LocalDate.now();
         return new LatestInstallmentMonthDTO(now.getYear(), now.getMonthValue());
     }
-
-
-
 }
