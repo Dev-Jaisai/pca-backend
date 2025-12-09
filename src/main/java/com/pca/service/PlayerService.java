@@ -5,10 +5,7 @@ import com.pca.dto.PlayerResponseDTO;
 import com.pca.exception.ResourceNotFoundException;
 import com.pca.model.GroupEntity;
 import com.pca.model.Player;
-import com.pca.repository.GroupRepository;
-import com.pca.repository.InstallmentRepository;
-import com.pca.repository.PaymentRepository;
-import com.pca.repository.PlayerRepository;
+import com.pca.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +23,7 @@ public class PlayerService {
     private final GroupRepository groupRepository;
     private final InstallmentRepository installmentRepository;
     private final PaymentRepository paymentRepository;
+    private final ReminderHistoryRepository reminderHistoryRepository;
 
 
 
@@ -75,19 +73,29 @@ public class PlayerService {
         p.setPhotoUrl(req.getPhotoUrl());
         Player updated = playerRepository.save(p);
         return toDto(updated);
-    }
-
-    @Transactional
+    }@Transactional
     public void deletePlayer(Long playerId) {
+        // 0. optional: log / debug
+        log.info("Deleting player {} and related payments/installments/reminders", playerId);
+
         // 1) delete payments that belong to installments of this player
         paymentRepository.deleteByPlayerId(playerId);
 
-        // 2) delete installments for the player
-        installmentRepository.deleteByPlayerId(playerId);
+        // 2) find installment ids for this player
+        List<Long> instIds = installmentRepository.findIdsByPlayerId(playerId);
 
-        // 3) delete the player
+        if (!instIds.isEmpty()) {
+            // 3) delete reminder_history rows referencing those installments
+            reminderHistoryRepository.deleteByInstallmentIdIn(instIds);
+
+            // 4) delete installments for the player (your existing bulk delete)
+            installmentRepository.deleteByPlayerId(playerId);
+        }
+
+        // 5) delete the player
         playerRepository.deleteById(playerId);
     }
+
     public Player findByIdOrThrow(Long id) {
         return playerRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Player not found: " + id));
     }

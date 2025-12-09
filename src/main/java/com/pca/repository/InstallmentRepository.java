@@ -88,5 +88,9 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
             "ORDER BY i.period_year DESC, i.period_month DESC LIMIT 1",
             nativeQuery = true)
     Object[] findLatestPeriodNative();
+
+    // helper: get installment ids for a player
+    @Query("select i.id from Installment i where i.player.id = :playerId")
+    List<Long> findIdsByPlayerId(Long playerId);
 }
 
