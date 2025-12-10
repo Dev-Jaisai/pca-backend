@@ -143,4 +143,28 @@ public class InstallmentService {
         LocalDate now = LocalDate.now();
         return new LatestInstallmentMonthDTO(now.getYear(), now.getMonthValue());
     }
+
+    /**
+     * Checks all installments. If due date is passed and money is left, mark OVERDUE.
+     */
+    @Transactional
+    public void updateOverdueStatuses() {
+        LocalDate today = LocalDate.now();
+        log.info("Running daily overdue check for date: {}", today);
+
+        // Find installments where dueDate is before today AND remainingAmount > 0
+        List<Installment> overdueCandidates = installmentRepository
+                .findByDueDateBeforeAndRemainingAmountGreaterThan(today, 0.0);
+
+        int count = 0;
+        for (Installment inst : overdueCandidates) {
+            // Only update if it is not already marked as OVERDUE
+            if (inst.getStatus() != Installment.Status.OVERDUE) {
+                inst.setStatus(Installment.Status.OVERDUE);
+                installmentRepository.save(inst);
+                count++;
+            }
+        }
+        log.info("Updated {} installments to OVERDUE status.", count);
+    }
 }

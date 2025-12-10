@@ -77,4 +77,11 @@ public class InstallmentController {
         LatestInstallmentMonthDTO dto = installmentService.getLatestInstallmentMonth();
         return ResponseEntity.ok(dto);
     }
+    // ... inside InstallmentController class ...
+
+    @PostMapping("/refresh-overdue")
+    public ResponseEntity<String> refreshOverdue() {
+        installmentService.updateOverdueStatuses();
+        return ResponseEntity.ok("Overdue statuses updated successfully");
+    }
 }
