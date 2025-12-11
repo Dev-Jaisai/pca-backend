@@ -23,4 +23,13 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
 
     // remove any duplicate or incorrect methods named deleteByPlayerId without @Query
     // JpaRepository already provides deleteById(Long id)
+
+
+    /// FIX 1: Use nativeQuery = true and standard MySQL SQL
+    @Query(value = "SELECT * FROM player WHERE DAY(join_date) = :day", nativeQuery = true)
+    List<Player> findByJoinDay(@Param("day") int day);
+
+    // FIX 2: Use nativeQuery = true and standard MySQL SQL
+    @Query(value = "SELECT * FROM player WHERE DAY(join_date) <= :day", nativeQuery = true)
+    List<Player> findByJoinDayLessThanEqual(@Param("day") int day);
 }

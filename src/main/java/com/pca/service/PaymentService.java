@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -105,5 +106,50 @@ public class PaymentService {
                 .paymentMethod(p.getPaymentMethod())
                 .reference(p.getReference())
                 .build();
+    }
+    // inside PaymentService class
+
+    @Transactional
+    public void payOverdue(Long playerId, Double totalPaymentAmount, String method) {
+        // 1. Get overdue installments sorted by date (oldest first)
+        List<Installment> overdueList = installmentRepository.findOverdueInstallmentsByPlayer(playerId, LocalDate.now());
+
+        Double remainingMoneyToAllocate = totalPaymentAmount;
+
+        for (Installment inst : overdueList) {
+            if (remainingMoneyToAllocate <= 0) break;
+
+            Double pendingOnInstallment = inst.getRemainingAmount();
+
+            // Pay the full pending amount OR whatever money is left
+            Double amountToPayHere = Math.min(pendingOnInstallment, remainingMoneyToAllocate);
+
+            // 2. Create Payment Record
+            Payment payment = new Payment();
+            payment.setInstallment(inst);
+            payment.setAmount(amountToPayHere);
+            payment.setPaidOn(LocalDateTime.now());
+            payment.setPaymentMethod(method != null ? method : "Bulk Overdue Payment");
+            paymentRepository.save(payment);
+
+            // 3. Update Installment Status
+            double newPaid = (inst.getPaidAmount() == null ? 0.0 : inst.getPaidAmount()) + amountToPayHere;
+            inst.setPaidAmount(newPaid);
+
+            double newRemaining = (inst.getRemainingAmount() == null ? inst.getAmount() : inst.getRemainingAmount()) - amountToPayHere;
+            if (newRemaining < 0.01) newRemaining = 0.0; // fix float precision
+
+            inst.setRemainingAmount(newRemaining);
+
+            if (newRemaining == 0.0) {
+                inst.setStatus(Installment.Status.PAID);
+            } else {
+                inst.setStatus(Installment.Status.PARTIALLY_PAID);
+            }
+
+            installmentRepository.save(inst);
+
+            remainingMoneyToAllocate -= amountToPayHere;
+        }
     }
 }

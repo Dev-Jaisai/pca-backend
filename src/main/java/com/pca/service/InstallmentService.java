@@ -193,4 +193,35 @@ public class InstallmentService {
         Installment saved = installmentRepository.save(installment);
         return toDto(saved);
     }
+    @Transactional
+    public void createInstallmentForPlayer(Long playerId, int month, int year, LocalDate dueDate, Double amountOverride) {
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Player not found: " + playerId));
+
+        Double amount = amountOverride;
+
+        // If no specific amount provided, fetch the group fee
+        if (amount == null) {
+            FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(player.getPlayerGroup(), LocalDate.now());
+            if (fee == null) {
+                log.warn("Skipping auto-installment for player {}: No fee structure found.", playerId);
+                return; // Exit safely if no fee is defined
+            }
+            amount = fee.getMonthlyFee();
+        }
+
+        Installment ins = Installment.builder()
+                .player(player)
+                .periodMonth(month)
+                .periodYear(year)
+                .amount(amount)
+                .paidAmount(0.0)
+                .remainingAmount(amount)
+                .status(Installment.Status.PENDING)
+                .dueDate(dueDate)
+                .build();
+
+        installmentRepository.save(ins);
+        log.info("Auto-generated installment for player {} (Month: {}/{})", playerId, month, year);
+    }
 }
