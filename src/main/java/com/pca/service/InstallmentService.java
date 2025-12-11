@@ -1,5 +1,6 @@
 package com.pca.service;
 
+import com.pca.dto.InstallmentExtensionDTO;
 import com.pca.dto.InstallmentRequestDTO;
 import com.pca.dto.InstallmentResponseDTO;
 import com.pca.dto.LatestInstallmentMonthDTO;
@@ -166,5 +167,30 @@ public class InstallmentService {
             }
         }
         log.info("Updated {} installments to OVERDUE status.", count);
+    }
+
+    // --- ADD THIS METHOD ---
+    @Transactional
+    public InstallmentResponseDTO extendDueDate(InstallmentExtensionDTO req) {
+        log.info("Updating due date for installment {} to {}", req.getInstallmentId(), req.getNewDueDate());
+
+        Installment installment = installmentRepository.findById(req.getInstallmentId())
+                .orElseThrow(() -> new ResourceNotFoundException("Installment not found: " + req.getInstallmentId()));
+
+        // 1. Set New Date Directly
+        installment.setDueDate(req.getNewDueDate());
+
+        // 2. Smart Status Reset
+        // If it was OVERDUE, but the new date is today or future, make it PENDING.
+        if (installment.getStatus() == Installment.Status.OVERDUE) {
+            LocalDate today = LocalDate.now();
+            if (!req.getNewDueDate().isBefore(today)) {
+                installment.setStatus(Installment.Status.PENDING);
+                log.info("Auto-correcting status to PENDING for installment {}", installment.getId());
+            }
+        }
+
+        Installment saved = installmentRepository.save(installment);
+        return toDto(saved);
     }
 }

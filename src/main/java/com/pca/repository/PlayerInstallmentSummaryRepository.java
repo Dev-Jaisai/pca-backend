@@ -90,4 +90,40 @@ public interface PlayerInstallmentSummaryRepository extends Repository<Player, L
     // 2. Count Query (Required for Pagination Metadata)
     @Query(value = "SELECT COUNT(*) FROM installment", nativeQuery = true)
     long countAllInstallments();
+
+    // In PlayerInstallmentSummaryRepository.java
+    @Query(value = """
+    SELECT 
+        p.id AS playerId,
+        p.name AS playerName,
+        p.phone AS phone,
+        g.name AS groupName,
+        p.join_date AS joinDate,
+        
+        -- CHANGE: Use SUM instead of i.amount
+        SUM(i.amount) AS totalInstallmentAmount,
+        COUNT(i.id) AS installmentCount,
+        
+        COALESCE(SUM(pay.amount), 0) AS totalPaid,
+        MAX(i.due_date) AS latestDueDate,  -- or MIN() for earliest
+        STRING_AGG(i.status, ',') AS statuses,  -- or handle differently
+        
+        -- Calculate remaining as sum of remaining amounts
+        SUM(i.remaining_amount) AS totalRemaining,
+        
+        MAX(pay.paid_on) AS lastPaymentDate
+        
+    FROM player p
+    LEFT JOIN player_group g ON p.group_id = g.id
+    JOIN installment i ON i.player_id = p.id 
+    LEFT JOIN payment pay ON pay.installment_id = i.id
+    
+    -- Add WHERE clause for overdue if needed
+    WHERE i.due_date < CURDATE() AND i.remaining_amount > 0
+    
+    GROUP BY p.id, p.name, p.phone, g.name, p.join_date
+    
+    ORDER BY i.due_date DESC
+    """, nativeQuery = true)
+    List<Object[]> fetchOverdueSummary();
 }

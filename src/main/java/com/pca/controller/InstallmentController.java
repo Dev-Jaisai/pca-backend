@@ -1,9 +1,6 @@
 package com.pca.controller;
 
-import com.pca.dto.InstallmentRequestDTO;
-import com.pca.dto.InstallmentResponseDTO;
-import com.pca.dto.LatestInstallmentMonthDTO;
-import com.pca.dto.PlayerInstallmentSummaryDTO;
+import com.pca.dto.*;
 import com.pca.service.InstallmentService;
 import com.pca.service.PlayerInstallmentSummaryService;
 import lombok.RequiredArgsConstructor;
@@ -90,9 +87,12 @@ public class InstallmentController {
         installmentService.updateOverdueStatuses();
         return ResponseEntity.ok("Overdue statuses updated successfully");
     }
-    /**
-     * PAGINATED ENDPOINT: Get ALL installments
-     * GET /api/installments/all-summary?page=0&size=20
-     */
 
+
+
+    // --- ADD THIS ENDPOINT ---
+    @PostMapping("/extend-due-date")
+    public ResponseEntity<InstallmentResponseDTO> extendDueDate(@Valid @RequestBody InstallmentExtensionDTO request) {
+        return ResponseEntity.ok(installmentService.extendDueDate(request));
+    }
 }

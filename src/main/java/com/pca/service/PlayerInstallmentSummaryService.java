@@ -159,4 +159,72 @@ public class PlayerInstallmentSummaryService {
 
         return new PageImpl<>(dtos, pageable, total);
     }
+    public List<PlayerInstallmentSummaryDTO> getOverdueSummary() {
+        List<Object[]> rows = repository.fetchOverdueSummary();
+        return rows.stream()
+                .map(this::mapOverdueToDto)  // You'll need a new mapping method
+                .collect(Collectors.toList());
+    }
+    private PlayerInstallmentSummaryDTO mapOverdueToDto(Object[] row) {
+        try {
+            Long playerId = ((Number) row[0]).longValue();
+            String playerName = (String) row[1];
+            String phone = (String) row[2];
+            String groupName = (String) row[3];
+
+            LocalDate joinDate = null;
+            if (row[4] != null) {
+                if (row[4] instanceof java.sql.Date) joinDate = ((java.sql.Date) row[4]).toLocalDate();
+                else if (row[4] instanceof java.sql.Timestamp) joinDate = ((java.sql.Timestamp) row[4]).toLocalDateTime().toLocalDate();
+            }
+
+            // Now we have SUM values instead of single installment values
+            BigDecimal totalInstallmentAmount = row[5] != null ? BigDecimal.valueOf(((Number) row[5]).doubleValue()) : BigDecimal.ZERO;
+            Long installmentCount = row[6] != null ? ((Number) row[6]).longValue() : 0L;
+            BigDecimal totalPaid = row[7] != null ? BigDecimal.valueOf(((Number) row[7]).doubleValue()) : BigDecimal.ZERO;
+
+            LocalDate latestDueDate = null;
+            if (row[8] != null) {
+                if (row[8] instanceof java.sql.Date) latestDueDate = ((java.sql.Date) row[8]).toLocalDate();
+                else if (row[8] instanceof java.sql.Timestamp) latestDueDate = ((java.sql.Timestamp) row[8]).toLocalDateTime().toLocalDate();
+            }
+
+            String statuses = (String) row[9];  // Comma-separated statuses
+            BigDecimal totalRemaining = row[10] != null ? BigDecimal.valueOf(((Number) row[10]).doubleValue()) : BigDecimal.ZERO;
+
+            LocalDateTime lastPaymentDate = null;
+            if (row.length > 11 && row[11] != null) {
+                if (row[11] instanceof java.sql.Timestamp) {
+                    lastPaymentDate = ((java.sql.Timestamp) row[11]).toLocalDateTime();
+                } else if (row[11] instanceof LocalDateTime) {
+                    lastPaymentDate = (LocalDateTime) row[11];
+                }
+            }
+
+            // Determine overall status
+            String overallStatus = "PENDING";
+            if (totalRemaining.doubleValue() == 0) {
+                overallStatus = "PAID";
+            } else if (statuses != null && statuses.contains("OVERDUE")) {
+                overallStatus = "OVERDUE";
+            }
+
+            return PlayerInstallmentSummaryDTO.builder()
+                    .playerId(playerId)
+                    .playerName(playerName)
+                    .phone(phone)
+                    .groupName(groupName)
+                    .joinDate(joinDate)
+                    .installmentAmount(totalInstallmentAmount)  // This is now TOTAL amount
+                    .totalPaid(totalPaid)
+                    .remaining(totalRemaining)
+                    .dueDate(latestDueDate)  // Or you might want earliest due date
+                    .status(overallStatus)
+                    .lastPaymentDate(lastPaymentDate)
+                    .build();
+        } catch (Exception e) {
+            log.error("Error mapping overdue row for player: " + (row.length > 1 ? row[1] : "Unknown"), e);
+            return null;
+        }
+    }
 }

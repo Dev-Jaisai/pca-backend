@@ -102,6 +102,50 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
     @Query("select i from Installment i where i.player.id in :playerIds")
     List<Installment> findByPlayerIds(@Param("playerIds") List<Long> playerIds);
 
-    
+    // Get installments for a player up to a cutoff date (inclusive)
+    List<Installment> findByPlayerIdAndDueDateLessThanEqualOrderByDueDateAsc(Long playerId, LocalDate cutoffDate);
+
+
+    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Installment i WHERE i.player.id = :playerId")
+    Double findTotalAmountByPlayerId(@Param("playerId") Long playerId);
+
+    @Query("SELECT COALESCE(SUM(i.paidAmount), 0) FROM Installment i WHERE i.player.id = :playerId")
+    Double findTotalPaidByPlayerId(@Param("playerId") Long playerId);
+
+    @Query("SELECT COALESCE(SUM(i.remainingAmount), 0) FROM Installment i WHERE i.player.id = :playerId")
+    Double findTotalRemainingByPlayerId(@Param("playerId") Long playerId);
+
+    // Get installments up to current month
+    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId " +
+            "AND (i.periodYear < :currentYear OR " +
+            "(i.periodYear = :currentYear AND i.periodMonth <= :currentMonth))")
+    List<Installment> findInstallmentsUpToCurrentMonth(
+            @Param("playerId") Long playerId,
+            @Param("currentYear") int currentYear,
+            @Param("currentMonth") int currentMonth);
+
+    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Installment i")
+    Double findTotalAmountForAllPlayers();
+
+    @Query("SELECT COALESCE(SUM(i.paidAmount), 0) FROM Installment i")
+    Double findTotalPaidForAllPlayers();
+
+    @Query("SELECT COALESCE(SUM(i.remainingAmount), 0) FROM Installment i")
+    Double findTotalRemainingForAllPlayers();
+
+    // Get overdue installments (due date passed AND remaining amount > 0)
+    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId " +
+            "AND i.dueDate < :today " +
+            "AND i.remainingAmount > 0 " +
+            "ORDER BY i.periodYear ASC, i.periodMonth ASC")
+    List<Installment> findOverdueInstallmentsByPlayer(
+            @Param("playerId") Long playerId,
+            @Param("today") LocalDate today);
+
+    @Query("SELECT DISTINCT i.player.id FROM Installment i WHERE i.dueDate < CURRENT_DATE AND i.remainingAmount > 0")
+    List<Long> findPlayersWithOverdue();
+
+    @Query("SELECT DISTINCT i.player.id FROM Installment i WHERE i.dueDate < :today AND i.remainingAmount > 0")
+    List<Long> findPlayersWithOverdue(@Param("today") LocalDate today);
 }
 

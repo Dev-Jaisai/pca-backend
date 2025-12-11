@@ -68,4 +68,10 @@ public class PlayerInstallmentSummaryController {
         List<PlayerInstallmentSummaryDTO> list = summaryService.getSummaryByStatus(status);
         return ResponseEntity.ok(list);
     }
+    @GetMapping("/overdue-summary")
+    public ResponseEntity<List<PlayerInstallmentSummaryDTO>> getOverdueSummary() {
+        log.info("Fetching overdue summary (cumulative amounts)");
+        List<PlayerInstallmentSummaryDTO> list = summaryService.getOverdueSummary();
+        return ResponseEntity.ok(list);
+    }
 }
