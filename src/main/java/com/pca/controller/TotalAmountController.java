@@ -18,6 +18,8 @@ public class TotalAmountController {
 
     private final TotalAmountService totalAmountService;
 
+
+
     @GetMapping("/player/{playerId}")
     public ResponseEntity<TotalAmountDTO> getPlayerTotal(@PathVariable Long playerId) {
         log.info("Getting total amounts for player: {}", playerId);

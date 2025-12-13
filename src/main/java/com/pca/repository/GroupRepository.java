@@ -8,5 +8,5 @@ import java.util.Optional;
 
 @Repository
 public interface GroupRepository extends JpaRepository<GroupEntity, Long> {
-    Optional<GroupEntity> findByNameIgnoreCase(String name);
+    Optional<GroupEntity> findByNameIgnoreCase(String name);//named method
 }

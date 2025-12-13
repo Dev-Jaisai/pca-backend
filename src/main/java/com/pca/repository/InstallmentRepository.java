@@ -147,5 +147,15 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
 
     @Query("SELECT DISTINCT i.player.id FROM Installment i WHERE i.dueDate < :today AND i.remainingAmount > 0")
     List<Long> findPlayersWithOverdue(@Param("today") LocalDate today);
+
+    // Find all unpaid installments for a player
+    List<Installment> findByPlayerIdAndStatusNot(Long playerId, Status status);
+
+    // Or use this query if above doesn't work:
+    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId " +
+            "AND i.status != 'PAID' " +
+            "AND (i.remainingAmount > 0 OR i.remainingAmount IS NULL) " +
+            "ORDER BY i.dueDate ASC")
+    List<Installment> findUnpaidInstallmentsByPlayer(@Param("playerId") Long playerId);
 }
 

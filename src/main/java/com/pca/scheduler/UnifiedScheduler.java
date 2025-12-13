@@ -26,7 +26,7 @@ public class UnifiedScheduler {
     // THE ONE AND ONLY DAILY JOB
     // Runs every day at 12:05 AM (00:05:00)
     // ==============================================================================
-    @Scheduled(cron = "0 5 0 * * ?")
+    @Scheduled(cron = "0 5 0 * * ?")//CRON
     @Transactional
     public void runDailyJobs() {
         log.info("=== 🌙 Starting Nightly Jobs (12:05 AM) ===");

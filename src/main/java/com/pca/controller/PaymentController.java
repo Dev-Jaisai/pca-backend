@@ -37,4 +37,10 @@ public class PaymentController {
         paymentService.payOverdue(request.getPlayerId(), request.getAmount(), request.getPaymentMethod());
         return ResponseEntity.ok("Overdue payment recorded successfully");
     }
+    // ✅ NEW ENDPOINT: Pay all unpaid installments
+    @PostMapping("/pay-unpaid")
+    public ResponseEntity<String> payUnpaid(@RequestBody OverduePaymentDTO request) {
+        paymentService.payUnpaid(request.getPlayerId(), request.getAmount(), request.getPaymentMethod());
+        return ResponseEntity.ok("Payment recorded successfully");
+    }
 }

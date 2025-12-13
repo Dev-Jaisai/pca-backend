@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -108,48 +109,149 @@ public class PaymentService {
                 .build();
     }
     // inside PaymentService class
-
     @Transactional
     public void payOverdue(Long playerId, Double totalPaymentAmount, String method) {
-        // 1. Get overdue installments sorted by date (oldest first)
-        List<Installment> overdueList = installmentRepository.findOverdueInstallmentsByPlayer(playerId, LocalDate.now());
+        try {
+            log.info("Starting overdue payment for player {} amount {}", playerId, totalPaymentAmount);
+
+            // 1. Get overdue installments
+            List<Installment> overdueList = installmentRepository
+                    .findOverdueInstallmentsByPlayer(playerId, LocalDate.now());
+
+            log.info("Found {} overdue installments", overdueList.size());
+
+            if (overdueList.isEmpty()) {
+                log.warn("No overdue installments found for player {}", playerId);
+                return;
+            }
+
+            Double remainingMoneyToAllocate = totalPaymentAmount;
+
+            for (Installment inst : overdueList) {
+                if (remainingMoneyToAllocate <= 0) break;
+
+                Double pendingOnInstallment = inst.getRemainingAmount();
+                Double amountToPayHere = Math.min(pendingOnInstallment, remainingMoneyToAllocate);
+
+                log.info("Paying installment {}: amount {}", inst.getId(), amountToPayHere);
+
+                // 2. Create Payment Record
+                Payment payment = Payment.builder()
+                        .installment(inst)
+                        .amount(amountToPayHere)
+                        .paidOn(LocalDateTime.now())
+                        .paymentMethod(method != null ? method : "Cash")
+                        .build();
+
+                Payment savedPayment = paymentRepository.save(payment);
+                log.info("Payment record created with ID: {}", savedPayment.getId());
+
+                // 3. Update Installment
+                double newPaid = (inst.getPaidAmount() == null ? 0.0 : inst.getPaidAmount()) + amountToPayHere;
+                inst.setPaidAmount(newPaid);
+
+                double newRemaining = inst.getAmount() - newPaid;
+                if (newRemaining < 0.01) newRemaining = 0.0;
+                inst.setRemainingAmount(newRemaining);
+
+                if (newRemaining == 0.0) {
+                    inst.setStatus(Installment.Status.PAID);
+                } else {
+                    inst.setStatus(Installment.Status.PARTIALLY_PAID);
+                }
+
+                installmentRepository.save(inst);
+                log.info("Updated installment {}: paid={}, remaining={}, status={}",
+                        inst.getId(), newPaid, newRemaining, inst.getStatus());
+
+                remainingMoneyToAllocate -= amountToPayHere;
+            }
+
+            log.info("Overdue payment completed for player {}", playerId);
+
+        } catch (Exception e) {
+            log.error("Error in payOverdue for player {}: {}", playerId, e.getMessage(), e);
+            throw new RuntimeException("Failed to process overdue payment: " + e.getMessage());
+        }
+    }
+    /**
+     * Common payment processing logic for both overdue and unpaid
+     */
+    private void processPaymentList(Long playerId, Double totalPaymentAmount, String method,
+                                    List<Installment> installments, String paymentType) {
 
         Double remainingMoneyToAllocate = totalPaymentAmount;
 
-        for (Installment inst : overdueList) {
+        for (Installment inst : installments) {
             if (remainingMoneyToAllocate <= 0) break;
 
+            // Get remaining amount
             Double pendingOnInstallment = inst.getRemainingAmount();
+            if (pendingOnInstallment == null || pendingOnInstallment <= 0) {
+                continue; // Already paid (should not happen, but safe check)
+            }
 
-            // Pay the full pending amount OR whatever money is left
             Double amountToPayHere = Math.min(pendingOnInstallment, remainingMoneyToAllocate);
 
-            // 2. Create Payment Record
-            Payment payment = new Payment();
-            payment.setInstallment(inst);
-            payment.setAmount(amountToPayHere);
-            payment.setPaidOn(LocalDateTime.now());
-            payment.setPaymentMethod(method != null ? method : "Bulk Overdue Payment");
-            paymentRepository.save(payment);
+            log.info("Paying {} installment {} (due {}): amount {}",
+                    paymentType, inst.getId(), inst.getDueDate(), amountToPayHere);
 
-            // 3. Update Installment Status
+            // Create Payment Record
+            Payment payment = Payment.builder()
+                    .installment(inst)
+                    .amount(amountToPayHere)
+                    .paidOn(LocalDateTime.now())
+                    .paymentMethod(method != null ? method : "Cash")
+                    .build();
+
+            Payment savedPayment = paymentRepository.save(payment);
+            log.info("Payment record created with ID: {}", savedPayment.getId());
+
+            // Update Installment
             double newPaid = (inst.getPaidAmount() == null ? 0.0 : inst.getPaidAmount()) + amountToPayHere;
             inst.setPaidAmount(newPaid);
 
-            double newRemaining = (inst.getRemainingAmount() == null ? inst.getAmount() : inst.getRemainingAmount()) - amountToPayHere;
-            if (newRemaining < 0.01) newRemaining = 0.0; // fix float precision
-
+            double newRemaining = inst.getAmount() - newPaid;
+            if (newRemaining < 0.01) newRemaining = 0.0;
             inst.setRemainingAmount(newRemaining);
 
+            // Update status
             if (newRemaining == 0.0) {
-                inst.setStatus(Installment.Status.PAID);
-            } else {
-                inst.setStatus(Installment.Status.PARTIALLY_PAID);
+                inst.setStatus(Status.PAID);
+            } else if (newPaid > 0.0) {
+                inst.setStatus(Status.PARTIALLY_PAID);
             }
 
             installmentRepository.save(inst);
+            log.info("Updated installment {}: paid={}, remaining={}, status={}",
+                    inst.getId(), newPaid, newRemaining, inst.getStatus());
 
             remainingMoneyToAllocate -= amountToPayHere;
         }
+
+        log.info("{} payment completed for player {}. Remaining unallocated: {}",
+                paymentType, playerId, remainingMoneyToAllocate);
     }
+    // NEW: Pay all unpaid installments (overdue + pending + future)
+    @Transactional
+    public void payUnpaid(Long playerId, Double totalPaymentAmount, String method) {
+        log.info("Starting ALL UNPAID payment for player {} amount {}", playerId, totalPaymentAmount);
+
+        // Get all unpaid installments (status != PAID)
+        List<Installment> unpaidList = installmentRepository.findByPlayerIdAndStatusNot(playerId, Status.PAID);
+
+        // Sort by due date (oldest first)
+        unpaidList.sort(Comparator.comparing(Installment::getDueDate));
+
+        log.info("Found {} unpaid installments", unpaidList.size());
+
+        if (unpaidList.isEmpty()) {
+            log.warn("No unpaid installments found for player {}", playerId);
+            return;
+        }
+
+        processPaymentList(playerId, totalPaymentAmount, method, unpaidList, "all unpaid");
+    }
+
+
 }
