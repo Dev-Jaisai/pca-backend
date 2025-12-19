@@ -76,4 +76,32 @@ public class FeeStructureService {
         return toDto(f);
     }
 
+
+    @Transactional
+    public FeeStructureResponseDTO updateFeeStructure(Long id, FeeStructureRequestDTO req) {
+        FeeStructure fee = feeRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Fee Structure not found: " + id));
+
+        // Update fields
+        fee.setMonthlyFee(req.getMonthlyFee());
+
+        // Only update dates if provided in the request
+        if (req.getEffectiveFrom() != null) {
+            fee.setEffectiveFrom(req.getEffectiveFrom());
+        }
+        if (req.getEffectiveTo() != null) {
+            fee.setEffectiveTo(req.getEffectiveTo());
+        }
+
+        FeeStructure updated = feeRepository.save(fee);
+        return toDto(updated);
+    }
+
+    @Transactional
+    public void deleteFeeStructure(Long id) {
+        if (!feeRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Fee Structure not found: " + id);
+        }
+        feeRepository.deleteById(id);
+    }
 }

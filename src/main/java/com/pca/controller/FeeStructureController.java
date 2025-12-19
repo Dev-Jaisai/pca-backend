@@ -45,5 +45,19 @@ public class FeeStructureController {
         }
         return ResponseEntity.ok(dto);
     }
+    @PutMapping("/{id}")
+    public ResponseEntity<FeeStructureResponseDTO> update(
+            @PathVariable Long id,
+            @Valid @RequestBody FeeStructureRequestDTO request
+    ) {
+        log.info("Updating fee structure id={}", id);
+        return ResponseEntity.ok(feeService.updateFeeStructure(id, request));
+    }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        log.info("Deleting fee structure id={}", id);
+        feeService.deleteFeeStructure(id);
+        return ResponseEntity.noContent().build();
+    }
 }
