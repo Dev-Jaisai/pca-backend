@@ -1,9 +1,6 @@
 package com.pca.service;
 
-import com.pca.dto.InstallmentExtensionDTO;
-import com.pca.dto.InstallmentRequestDTO;
-import com.pca.dto.InstallmentResponseDTO;
-import com.pca.dto.LatestInstallmentMonthDTO;
+import com.pca.dto.*;
 import com.pca.exception.ResourceNotFoundException;
 import com.pca.model.*;
 import com.pca.repository.InstallmentRepository;
@@ -224,4 +221,80 @@ public class InstallmentService {
         installmentRepository.save(ins);
         log.info("Auto-generated installment for player {} (Month: {}/{})", playerId, month, year);
     }
+//
+//    @Transactional
+//    public String bulkExtendDueDate(com.pca.dto.BulkExtendDTO req) {
+//        log.info("Bulk extending due dates. Group: {}, Days: {}, Month: {}/{}",
+//                req.getGroupId(), req.getDaysToAdd(), req.getMonth(), req.getYear());
+//
+//        // 1. Installments shodha (Paid soḍun baki sagle)
+//        List<Installment> list = installmentRepository.findForBulkExtension(
+//                req.getMonth(),
+//                req.getYear(),
+//                req.getGroupId()
+//        );
+//
+//        if (list.isEmpty()) {
+//            return "No pending installments found for this selection.";
+//        }
+//
+//        int count = 0;
+//        LocalDate today = LocalDate.now();
+//
+//        for (Installment inst : list) {
+//            // 2. Junya date madhye divas add kara
+//            LocalDate oldDate = inst.getDueDate();
+//            if (oldDate == null) continue; // Safety check
+//
+//            LocalDate newDate = oldDate.plusDays(req.getDaysToAdd());
+//            inst.setDueDate(newDate);
+//
+//            // 3. Status Reset Logic (Imp!)
+//            // Jar status OVERDUE hota, pan navin date future madhye ahe, tar PENDING kara.
+//            if (inst.getStatus() == Installment.Status.OVERDUE) {
+//                if (!newDate.isBefore(today)) { // Jar aaj kiva future date ahe
+//                    inst.setStatus(Installment.Status.PENDING);
+//                }
+//            }
+//            count++;
+//        }
+//
+//        installmentRepository.saveAll(list);
+//        return "Successfully extended due dates for " + count + " players.";
+//    }
+    @Transactional
+    public String bulkExtendForHolidays(BulkExtendDTO req) {
+        // 1. Divas Calculate kara
+        long daysToAdd = java.time.temporal.ChronoUnit.DAYS.between(
+                req.getHolidayStart(), req.getHolidayEnd()) + 1;
+
+        log.info("Extending due dates starting from {} by {} days due to holiday end {}.",
+                req.getHolidayStart(), daysToAdd, req.getHolidayEnd());
+
+        // 2. Query Call (Start date chya pudhche sagle pending items)
+        List<Installment> list = installmentRepository.findForFutureExtension(
+                req.getHolidayStart(), // Fakt start date pathva
+                req.getGroupId()
+        );
+
+        if (list.isEmpty()) {
+            return "No upcoming installments found to extend.";
+        }
+
+        // 3. Update Dates
+        for (Installment inst : list) {
+            LocalDate oldDate = inst.getDueDate();
+            LocalDate newDate = oldDate.plusDays(daysToAdd);
+            inst.setDueDate(newDate);
+
+            // Status update: Jar chukun overdue disat asel pan navin date future madhye geli, tar Pending kara
+            if (inst.getStatus() == Installment.Status.OVERDUE && !newDate.isBefore(LocalDate.now())) {
+                inst.setStatus(Installment.Status.PENDING);
+            }
+        }
+
+        installmentRepository.saveAll(list);
+        return "Applied holiday extension (" + daysToAdd + " days) to " + list.size() + " players.";
+    }
+
 }

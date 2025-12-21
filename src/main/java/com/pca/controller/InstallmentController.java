@@ -95,4 +95,19 @@ public class InstallmentController {
     public ResponseEntity<InstallmentResponseDTO> extendDueDate(@Valid @RequestBody InstallmentExtensionDTO request) {
         return ResponseEntity.ok(installmentService.extendDueDate(request));
     }
+//
+//
+//    @PostMapping("/bulk-extend")
+//    public ResponseEntity<String> bulkExtendDueDate(@RequestBody com.pca.dto.BulkExtendDTO request) {
+//        String result = installmentService.bulkExtendDueDate(request);
+//        return ResponseEntity.ok(result);
+//    }
+
+    // ... existing imports ...
+
+    @PostMapping("/extend-for-holidays")
+    public ResponseEntity<String> extendForHolidays(@RequestBody com.pca.dto.BulkExtendDTO request) {
+        String result = installmentService.bulkExtendForHolidays(request);
+        return ResponseEntity.ok(result);
+    }
 }

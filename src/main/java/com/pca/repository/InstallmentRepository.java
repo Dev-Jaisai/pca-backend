@@ -157,5 +157,28 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
             "AND (i.remainingAmount > 0 OR i.remainingAmount IS NULL) " +
             "ORDER BY i.dueDate ASC")
     List<Installment> findUnpaidInstallmentsByPlayer(@Param("playerId") Long playerId);
+
+
+    @Query("SELECT i FROM Installment i " +
+            "JOIN i.player p " +
+            "WHERE i.periodMonth = :month " +
+            "AND i.periodYear = :year " +
+            "AND (:groupId IS NULL OR p.playerGroup.id = :groupId) " +
+            "AND i.status != 'PAID'")
+    List<Installment> findForBulkExtension(
+            @Param("month") int month,
+            @Param("year") int year,
+            @Param("groupId") Integer groupId
+    );
+
+    @Query("SELECT i FROM Installment i " +
+            "JOIN i.player p " +
+            "WHERE (:groupId IS NULL OR p.playerGroup.id = :groupId) " +
+            "AND i.status != 'PAID' " +
+            "AND i.dueDate >= :holidayStart") // <-- HE CHANGE KELA (Start Date chya pudhche sagle)
+    List<Installment> findForFutureExtension(
+            @Param("holidayStart") LocalDate holidayStart,
+            @Param("groupId") Integer groupId
+    );
 }
 
