@@ -31,4 +31,11 @@ public class Player {
     private String notes;
 
     private String photoUrl;
+
+
+    @Column(name = "billing_day")
+    private Integer billingDay; // 1 to 31
+
+    @Column(name = "payment_cycle_months")
+    private Integer paymentCycleMonths = 1; // Default 1 (Monthly)
 }

@@ -180,5 +180,12 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
             @Param("holidayStart") LocalDate holidayStart,
             @Param("groupId") Integer groupId
     );
+
+    /**
+     * Finds the absolute last installment generated for a player
+     * (Ordered by Year DESC, Month DESC)
+     */
+    @Query(value = "SELECT * FROM installment WHERE player_id = :playerId ORDER BY period_year DESC, period_month DESC LIMIT 1", nativeQuery = true)
+    Installment findLastByPlayerId(@Param("playerId") Long playerId);
 }
 

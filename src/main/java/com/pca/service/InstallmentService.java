@@ -82,8 +82,8 @@ public class InstallmentService {
         if (amount == null) {
             // FIX 3: Updated player.getGroup() to player.getPlayerGroup()
             FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(player.getPlayerGroup(), LocalDate.now());
-            if (fee == null) throw new IllegalArgumentException("No fee structure for player's group");
-            amount = fee.getMonthlyFee();
+            if (fee == null)
+                throw new IllegalStateException("Cannot create installment: No Fee Structure defined for Group " + player.getPlayerGroup().getName());            amount = fee.getMonthlyFee();
         }
 
         Installment ins = Installment.builder()

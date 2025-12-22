@@ -32,4 +32,7 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
     // FIX 2: Use nativeQuery = true and standard MySQL SQL
     @Query(value = "SELECT * FROM player WHERE DAY(join_date) <= :day", nativeQuery = true)
     List<Player> findByJoinDayLessThanEqual(@Param("day") int day);
+
+    @Query(value = "SELECT * FROM player WHERE billing_day <= :day", nativeQuery = true)
+    List<Player> findByBillingDayLessThanEqual(@Param("day") int day);
 }

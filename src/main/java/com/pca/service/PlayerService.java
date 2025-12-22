@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,23 +26,75 @@ public class PlayerService {
     private final PaymentRepository paymentRepository;
     private final ReminderHistoryRepository reminderHistoryRepository;
 
+    // ✅ IMP: InstallmentService Inject केला आहे (Immediate Bill साठी)
+    private final InstallmentService installmentService;
+
     @Transactional
     public PlayerResponseDTO createPlayer(PlayerRequestDTO req) {
         log.info("Creating player {}", req.getName());
+
+        // 1. Group check kara
         GroupEntity group = groupRepository.findById(req.getGroupId())
                 .orElseThrow(() -> new ResourceNotFoundException("Group not found: " + req.getGroupId()));
 
+        // 2. Player Object banva
         Player p = Player.builder()
                 .name(req.getName())
                 .phone(req.getPhone())
                 .age(req.getAge())
                 .joinDate(req.getJoinDate())
-                .playerGroup(group) // FIX 1: Changed from .group(group)
+                .playerGroup(group)
                 .notes(req.getNotes())
                 .photoUrl(req.getPhotoUrl())
                 .build();
 
+        // -----------------------------------------------------------
+        // 🔥 LOGIC 1: PAYMENT CYCLE (Monthly / Quarterly)
+        // -----------------------------------------------------------
+        if (req.getPaymentCycleMonths() != null && req.getPaymentCycleMonths() > 0) {
+            p.setPaymentCycleMonths(req.getPaymentCycleMonths());
+        } else {
+            p.setPaymentCycleMonths(1); // Default Monthly (1)
+        }
+
+        // -----------------------------------------------------------
+        // 🔥 LOGIC 2: BILLING DAY & FIRST DUE DATE
+        // -----------------------------------------------------------
+        LocalDate firstDueDate;
+        if (req.getFirstInstallmentDate() != null) {
+            // Coach ne dili ti date vapra
+            firstDueDate = req.getFirstInstallmentDate();
+        } else {
+            // Coach ne dili nahi, tar AAJCHI date vapra (Immediate Payment)
+            firstDueDate = LocalDate.now();
+        }
+
+        // Billing Day set kara (He kayam fix rahil)
+        p.setBillingDay(firstDueDate.getDayOfMonth());
+
+
+        // 3. Player Save kara
         Player saved = playerRepository.save(p);
+
+        // -----------------------------------------------------------
+        // 🔥 LOGIC 3: IMMEDIATE FIRST INSTALLMENT GENERATION
+        // (Cron Job chi vat na baghta lagech bill banva)
+        // -----------------------------------------------------------
+        try {
+            log.info("Generating immediate first installment for {}", saved.getName());
+
+            installmentService.createInstallmentForPlayer(
+                    saved.getId(),
+                    firstDueDate.getMonthValue(), // Month
+                    firstDueDate.getYear(),       // Year
+                    firstDueDate,                 // Due Date
+                    null                          // Amount (Null = Auto from Group Fee)
+            );
+        } catch (Exception e) {
+            // Error alyas log kara, pan player creation roll-back naka karu
+            log.error("Failed to create first installment for {}: {}", saved.getName(), e.getMessage());
+        }
+
         return toDto(saved);
     }
 
@@ -53,46 +106,62 @@ public class PlayerService {
         Player p = playerRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Player not found: " + id));
         return toDto(p);
     }
-
     @Transactional
     public PlayerResponseDTO updatePlayer(Long id, PlayerRequestDTO req) {
         log.info("Updating player id={}", id);
-        Player p = playerRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Player not found: " + id));
+
+        Player p = playerRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Player not found: " + id));
+
+        // 1. Basic Info Update
         if (req.getName() != null) p.setName(req.getName());
-        p.setPhone(req.getPhone());
-        p.setAge(req.getAge());
-        p.setJoinDate(req.getJoinDate());
+        if (req.getPhone() != null) p.setPhone(req.getPhone());
+        if (req.getAge() != null) p.setAge(req.getAge());
+        if (req.getJoinDate() != null) p.setJoinDate(req.getJoinDate());
+
         if (req.getGroupId() != null) {
             GroupEntity group = groupRepository.findById(req.getGroupId())
                     .orElseThrow(() -> new ResourceNotFoundException("Group not found: " + req.getGroupId()));
-            p.setPlayerGroup(group); // FIX 2: Changed from .setGroup(group)
+            p.setPlayerGroup(group);
         }
-        p.setNotes(req.getNotes());
-        p.setPhotoUrl(req.getPhotoUrl());
+
+        if (req.getNotes() != null) p.setNotes(req.getNotes());
+        if (req.getPhotoUrl() != null) p.setPhotoUrl(req.getPhotoUrl());
+
+        // -----------------------------------------------------------
+        // 🔥 NEW: BILLING UPDATE LOGIC
+        // -----------------------------------------------------------
+
+        // 2. Update Payment Cycle (Monthly -> Quarterly or vice versa)
+        if (req.getPaymentCycleMonths() != null && req.getPaymentCycleMonths() > 0) {
+            p.setPaymentCycleMonths(req.getPaymentCycleMonths());
+            log.info("Updated Payment Cycle for player {}: {} months", id, req.getPaymentCycleMonths());
+        }
+
+        // 3. Update Billing Day (Change future due date day)
+        // जर युजरने 'firstInstallmentDate' पाठवली, तर आपण त्याचा 'दिवस' (Day)
+        // नवीन Billing Day म्हणून सेट करू.
+        if (req.getFirstInstallmentDate() != null) {
+            int newBillDay = req.getFirstInstallmentDate().getDayOfMonth();
+            p.setBillingDay(newBillDay);
+            log.info("Updated Billing Day for player {}: Day {}", id, newBillDay);
+        }
+
         Player updated = playerRepository.save(p);
         return toDto(updated);
     }
 
     @Transactional
     public void deletePlayer(Long playerId) {
-        // 0. optional: log / debug
-        log.info("Deleting player {} and related payments/installments/reminders", playerId);
-
-        // 1) delete payments that belong to installments of this player
+        log.info("Deleting player {} and related data", playerId);
         paymentRepository.deleteByPlayerId(playerId);
 
-        // 2) find installment ids for this player
         List<Long> instIds = installmentRepository.findIdsByPlayerId(playerId);
-
         if (!instIds.isEmpty()) {
-            // 3) delete reminder_history rows referencing those installments
             reminderHistoryRepository.deleteByInstallmentIdIn(instIds);
-
-            // 4) delete installments for the player (your existing bulk delete)
             installmentRepository.deleteByPlayerId(playerId);
         }
 
-        // 5) delete the player
         playerRepository.deleteById(playerId);
     }
 
@@ -107,11 +176,11 @@ public class PlayerService {
                 .phone(p.getPhone())
                 .age(p.getAge())
                 .joinDate(p.getJoinDate())
-                // FIX 3: Changed from .getGroup() to .getPlayerGroup()
                 .groupId(p.getPlayerGroup() != null ? p.getPlayerGroup().getId() : null)
                 .groupName(p.getPlayerGroup() != null ? p.getPlayerGroup().getName() : null)
                 .notes(p.getNotes())
                 .photoUrl(p.getPhotoUrl())
+                // Response madhye he fields pathvu shakto jar havet asel
                 .build();
     }
 }
