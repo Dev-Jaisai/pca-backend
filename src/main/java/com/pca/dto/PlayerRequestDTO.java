@@ -22,4 +22,11 @@ public class PlayerRequestDTO {
 
     private String notes;
     private String photoUrl;
+
+    // ✅ NEW FIELD ADDED
+    // He field frontend varun yeil (Optional).
+    // Jar coach ne 1st installment date select keli, tar ti ithe yeil.
+    private LocalDate firstInstallmentDate;
+
+    private Integer paymentCycleMonths; // 1 = Monthly, 3 = Quarterly
 }
