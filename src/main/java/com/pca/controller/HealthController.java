@@ -1,0 +1,14 @@
+package com.pca.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class HealthController {
+
+    @GetMapping("/")
+//    Defaul Url; For Render
+    public String health() {
+        return "PCA Backend is running 🚀";
+    }
+}
