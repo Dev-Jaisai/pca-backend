@@ -80,11 +80,22 @@ public class InstallmentService {
 
         Double amount = req.getAmount();
         if (amount == null) {
-            // FIX 3: Updated player.getGroup() to player.getPlayerGroup()
             FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(player.getPlayerGroup(), LocalDate.now());
             if (fee == null)
-                throw new IllegalStateException("Cannot create installment: No Fee Structure defined for Group " + player.getPlayerGroup().getName());            amount = fee.getMonthlyFee();
+                throw new IllegalStateException("Cannot create installment: No Fee Structure defined for Group " + player.getPlayerGroup().getName());
+            amount = fee.getMonthlyFee();
         }
+
+        // 🔥 FIX START: तारीख चेक करून स्टेटस ठरवा
+        LocalDate today = LocalDate.now();
+        Installment.Status initialStatus = Installment.Status.PENDING;
+
+        // जर निवडलेली तारीख आजच्या आधीची असेल, तर लगेच OVERDUE करा
+        if (req.getDueDate() != null && req.getDueDate().isBefore(today)) {
+            initialStatus = Installment.Status.OVERDUE;
+            log.info("Marking manually created installment as OVERDUE immediately (Due Date: {})", req.getDueDate());
+        }
+        // 🔥 FIX END
 
         Installment ins = Installment.builder()
                 .player(player)
@@ -93,7 +104,9 @@ public class InstallmentService {
                 .amount(amount)
                 .paidAmount(0.0)
                 .remainingAmount(amount)
-                .status(Installment.Status.PENDING)
+
+                .status(initialStatus) // ✅ इथे आता PENDING ऐवजी logic वापरा
+
                 .dueDate(req.getDueDate())
                 .build();
 
@@ -165,8 +178,6 @@ public class InstallmentService {
         }
         log.info("Updated {} installments to OVERDUE status.", count);
     }
-
-    // --- ADD THIS METHOD ---
     @Transactional
     public InstallmentResponseDTO extendDueDate(InstallmentExtensionDTO req) {
         log.info("Updating due date for installment {} to {}", req.getInstallmentId(), req.getNewDueDate());
@@ -174,16 +185,22 @@ public class InstallmentService {
         Installment installment = installmentRepository.findById(req.getInstallmentId())
                 .orElseThrow(() -> new ResourceNotFoundException("Installment not found: " + req.getInstallmentId()));
 
-        // 1. Set New Date Directly
+        // 1. नवीन तारीख सेट करा
         installment.setDueDate(req.getNewDueDate());
 
-        // 2. Smart Status Reset
-        // If it was OVERDUE, but the new date is today or future, make it PENDING.
-        if (installment.getStatus() == Installment.Status.OVERDUE) {
+        // 🔥 FIX: Check BOTH directions (Future & Past)
+        // जर पैसे भरायचे बाकी असतील, तरच स्टेटस बदला (PAID असेल तर हात लावू नका)
+        if (installment.getRemainingAmount() > 0) {
             LocalDate today = LocalDate.now();
-            if (!req.getNewDueDate().isBefore(today)) {
+
+            if (req.getNewDueDate().isBefore(today)) {
+                // Case A: जर नवीन तारीख आजच्या आधीची असेल -> तर OVERDUE करा
+                installment.setStatus(Installment.Status.OVERDUE);
+                log.info("Date is in past. Status updated to OVERDUE for id {}", installment.getId());
+            } else {
+                // Case B: जर नवीन तारीख आज किंवा फ्युचर असेल -> तर PENDING करा
                 installment.setStatus(Installment.Status.PENDING);
-                log.info("Auto-correcting status to PENDING for installment {}", installment.getId());
+                log.info("Date is in future. Status updated to PENDING for id {}", installment.getId());
             }
         }
 
@@ -207,6 +224,13 @@ public class InstallmentService {
             amount = fee.getMonthlyFee();
         }
 
+        // 🔥 FIX START: इथे पण तारीख चेक करा (हे लॉजिक मिसिंग होते)
+        Installment.Status initialStatus = Installment.Status.PENDING;
+        if (dueDate.isBefore(LocalDate.now())) {
+            initialStatus = Installment.Status.OVERDUE;
+        }
+        // 🔥 FIX END
+
         Installment ins = Installment.builder()
                 .player(player)
                 .periodMonth(month)
@@ -214,14 +238,19 @@ public class InstallmentService {
                 .amount(amount)
                 .paidAmount(0.0)
                 .remainingAmount(amount)
-                .status(Installment.Status.PENDING)
+
+                .status(initialStatus) // ✅ आता इथे PENDING ऐवजी initialStatus येईल
+
                 .dueDate(dueDate)
                 .build();
 
         installmentRepository.save(ins);
-        log.info("Auto-generated installment for player {} (Month: {}/{})", playerId, month, year);
+
+        // लॉग मध्ये पण Status प्रिंट करा म्हणजे खात्री होईल
+        log.info("Auto-generated installment for player {} (Month: {}/{}) Status: {}", playerId, month, year, initialStatus);
     }
-//
+
+    //
 //    @Transactional
 //    public String bulkExtendDueDate(com.pca.dto.BulkExtendDTO req) {
 //        log.info("Bulk extending due dates. Group: {}, Days: {}, Month: {}/{}",

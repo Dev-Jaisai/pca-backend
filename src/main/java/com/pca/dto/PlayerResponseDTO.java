@@ -1,7 +1,6 @@
 package com.pca.dto;
 
 import lombok.*;
-
 import java.time.LocalDate;
 
 @Data
@@ -20,4 +19,8 @@ public class PlayerResponseDTO {
 
     private String notes;
     private String photoUrl;
+
+    // ✅ हे दोन नवीन फील्ड्स ॲड करा
+    private Integer billingDay;
+    private Integer paymentCycleMonths;
 }
