@@ -168,7 +168,7 @@ public class PlayerService {
     public Player findByIdOrThrow(Long id) {
         return playerRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Player not found: " + id));
     }
-
+    // खालील मेथड रिप्लेस करा
     private PlayerResponseDTO toDto(Player p) {
         return PlayerResponseDTO.builder()
                 .id(p.getId())
@@ -180,7 +180,11 @@ public class PlayerService {
                 .groupName(p.getPlayerGroup() != null ? p.getPlayerGroup().getName() : null)
                 .notes(p.getNotes())
                 .photoUrl(p.getPhotoUrl())
-                // Response madhye he fields pathvu shakto jar havet asel
+
+                // ✅ हे ऍड करा: आता Backend फ्रंटेंडला डेटा पाठवेल
+                .billingDay(p.getBillingDay())
+                .paymentCycleMonths(p.getPaymentCycleMonths())
+
                 .build();
     }
 }
