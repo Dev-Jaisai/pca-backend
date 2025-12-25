@@ -26,16 +26,23 @@ public class Player {
 
     @ManyToOne
     @JoinColumn(name = "group_id")
-    private GroupEntity playerGroup; // NEW NAME
+    private GroupEntity playerGroup;
+
     @Column(length = 1024)
     private String notes;
 
     private String photoUrl;
 
-
     @Column(name = "billing_day")
-    private Integer billingDay; // 1 to 31
+    private Integer billingDay;
 
     @Column(name = "payment_cycle_months")
-    private Integer paymentCycleMonths = 1; // Default 1 (Monthly)
+    @Builder.Default
+    private Integer paymentCycleMonths = 1;
+
+    // 🔥 NEW FIELD: ACTIVE STATUS
+    // True = Bill yeil, False = Bill yenar nahi (Holiday/Left)
+    @Column(name = "is_active", nullable = false)
+    @Builder.Default
+    private Boolean isActive = true;
 }

@@ -35,4 +35,10 @@ public class GroupController {
         groupService.deleteGroup(id);
     }
 
+    @PutMapping("/{id}")
+    public GroupResponseDTO update(@PathVariable Long id, @Valid @RequestBody GroupRequestDTO request) {
+        log.info("Updating group id={}", id);
+        return groupService.updateGroup(id, request);
+    }
+
 }

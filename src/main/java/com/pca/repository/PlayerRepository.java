@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
+
 @Repository
 public interface PlayerRepository extends JpaRepository<Player, Long> {
 
@@ -21,18 +22,16 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
 
     boolean existsByPlayerGroupId(Long groupId);
 
-    // remove any duplicate or incorrect methods named deleteByPlayerId without @Query
-    // JpaRepository already provides deleteById(Long id)
-
-
-    /// FIX 1: Use nativeQuery = true and standard MySQL SQL
+    // FIX 1: Join Day logic
     @Query(value = "SELECT * FROM player WHERE DAY(join_date) = :day", nativeQuery = true)
     List<Player> findByJoinDay(@Param("day") int day);
 
-    // FIX 2: Use nativeQuery = true and standard MySQL SQL
-    @Query(value = "SELECT * FROM player WHERE DAY(join_date) <= :day", nativeQuery = true)
-    List<Player> findByJoinDayLessThanEqual(@Param("day") int day);
-
+    // FIX 2: Billing Day logic
     @Query(value = "SELECT * FROM player WHERE billing_day <= :day", nativeQuery = true)
     List<Player> findByBillingDayLessThanEqual(@Param("day") int day);
+
+    // 🔥 NEW METHOD FOR SCHEDULER (FAKT ACTIVE PLAYERS)
+    // Billing Day check kara + Active aahet ka te check kara
+    @Query(value = "SELECT * FROM player WHERE billing_day <= :day AND is_active = true", nativeQuery = true)
+    List<Player> findActivePlayersByBillingDay(@Param("day") int day);
 }
