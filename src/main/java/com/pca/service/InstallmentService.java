@@ -86,17 +86,15 @@ public class InstallmentService {
             amount = fee.getMonthlyFee();
         }
 
-        // 🔥 FIX START: तारीख चेक करून स्टेटस ठरवा
+        // 🔥 FIX START: Check date immediately 🔥
         LocalDate today = LocalDate.now();
         Installment.Status initialStatus = Installment.Status.PENDING;
 
-        // जर निवडलेली तारीख आजच्या आधीची असेल, तर लगेच OVERDUE करा
-        if (req.getDueDate() != null && req.getDueDate().isBefore(today)) {
+        if (req.getDueDate().isBefore(today)) {
             initialStatus = Installment.Status.OVERDUE;
-            log.info("Marking manually created installment as OVERDUE immediately (Due Date: {})", req.getDueDate());
+            log.info("Creating bill as OVERDUE since {} is before {}", req.getDueDate(), today);
         }
         // 🔥 FIX END
-
         Installment ins = Installment.builder()
                 .player(player)
                 .periodMonth(req.getPeriodMonth())
@@ -104,9 +102,7 @@ public class InstallmentService {
                 .amount(amount)
                 .paidAmount(0.0)
                 .remainingAmount(amount)
-
-                .status(initialStatus) // ✅ इथे आता PENDING ऐवजी logic वापरा
-
+                .status(initialStatus) // ✅ Set the status here
                 .dueDate(req.getDueDate())
                 .build();
 
@@ -214,6 +210,7 @@ public class InstallmentService {
 
         Double amount = amountOverride;
 
+
         // If no specific amount provided, fetch the group fee
         if (amount == null) {
             FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(player.getPlayerGroup(), LocalDate.now());
@@ -224,12 +221,10 @@ public class InstallmentService {
             amount = fee.getMonthlyFee();
         }
 
-        // 🔥 FIX START: इथे पण तारीख चेक करा (हे लॉजिक मिसिंग होते)
         Installment.Status initialStatus = Installment.Status.PENDING;
         if (dueDate.isBefore(LocalDate.now())) {
             initialStatus = Installment.Status.OVERDUE;
         }
-        // 🔥 FIX END
 
         Installment ins = Installment.builder()
                 .player(player)
@@ -238,9 +233,7 @@ public class InstallmentService {
                 .amount(amount)
                 .paidAmount(0.0)
                 .remainingAmount(amount)
-
-                .status(initialStatus) // ✅ आता इथे PENDING ऐवजी initialStatus येईल
-
+                .status(initialStatus) // ✅ Set Status
                 .dueDate(dueDate)
                 .build();
 

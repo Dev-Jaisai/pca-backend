@@ -60,8 +60,8 @@ public class UnifiedScheduler {
 
         // 1. फक्त बिलिंग डे वालेच नाही, तर 'सर्व' Active प्लेयर्स चेक करणे जास्त सुरक्षित आहे.
         // पण तुझ्या लॉजिकनुसार आपण बिलिंग डे वालेच घेऊ.
-        List<Player> players = playerRepository.findByBillingDayLessThanEqual(currentDay);
-
+//        List<Player> players = playerRepository.findByBillingDayLessThanEqual(currentDay);
+        List<Player> players = playerRepository.findActivePlayersByBillingDay(currentDay);
         for (Player p : players) {
             try {
                 Installment lastInst = installmentRepository.findLastByPlayerId(p.getId());

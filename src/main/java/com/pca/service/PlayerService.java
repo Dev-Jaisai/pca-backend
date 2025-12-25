@@ -184,6 +184,7 @@ public class PlayerService {
                 // ✅ हे ऍड करा: आता Backend फ्रंटेंडला डेटा पाठवेल
                 .billingDay(p.getBillingDay())
                 .paymentCycleMonths(p.getPaymentCycleMonths())
+                .isActive(p.getIsActive()) // OR p.isActive() depending on your getter
 
                 .build();
     }

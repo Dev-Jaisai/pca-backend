@@ -20,10 +20,11 @@ public interface FeeStructureRepository extends JpaRepository<FeeStructure, Long
     Optional<FeeStructure> findTopByGroupAndEffectiveFromLessThanEqualOrderByEffectiveFromDesc(GroupEntity group, LocalDate date);
     List<FeeStructure> findByGroupOrderByEffectiveFromDesc(GroupEntity group);
     boolean existsByGroupId(Long groupId);
-
     @Modifying
     @Transactional
     @Query(value = "DELETE FROM fee_structure WHERE group_id = :groupId", nativeQuery = true)
     void deleteByGroupId(@Param("groupId") Long groupId);
+
+    List<FeeStructure> findByGroup(GroupEntity group);
 
 }

@@ -23,7 +23,7 @@ public class Installment {
     @JoinColumn(name = "player_id", nullable = false)
     private Player player;
 
-    private Integer periodMonth; // 1..12
+    private Integer periodMonth;
     private Integer periodYear;
 
     @Column(nullable = false)
@@ -37,7 +37,16 @@ public class Installment {
 
     private LocalDate dueDate;
 
+    // 🔥 NEW FIELD (For Reasons like "Going to Village")
+    @Column(length = 500)
+    private String notes;
+
     public enum Status {
-        PENDING, PARTIALLY_PAID, PAID, OVERDUE
+        PENDING,
+        PARTIALLY_PAID,
+        PAID,
+        OVERDUE,
+        SKIPPED,   // ✅ NEW: Holiday sathi
+        CANCELLED  // ✅ NEW: Left sathi
     }
 }
