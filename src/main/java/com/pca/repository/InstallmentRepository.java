@@ -187,5 +187,32 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
      */
     @Query(value = "SELECT * FROM installment WHERE player_id = :playerId ORDER BY period_year DESC, period_month DESC LIMIT 1", nativeQuery = true)
     Installment findLastByPlayerId(@Param("playerId") Long playerId);
+
+
+    // (Future Paid Bills check - Juna asel tar theva)
+    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId AND i.dueDate > :leftDate AND i.status = 'PAID'")
+    List<Installment> findFuturePaidBills(@Param("playerId") Long playerId, @Param("leftDate") LocalDate leftDate);
+
+    // ✅ NEW (CORRECT): Deletes strictly FUTURE months only
+    @Modifying
+    @Query("DELETE FROM Installment i WHERE i.player.id = :playerId " +
+            "AND i.status != 'PAID' " +
+            "AND (" +
+            "   (i.periodYear > :year) " +
+            "   OR (i.periodYear = :year AND i.periodMonth > :month)" +
+            ")")
+    void deleteFutureMonths(@Param("playerId") Long playerId, @Param("month") int month, @Param("year") int year);
+
+    Installment findFirstByPlayerIdAndDueDateAfterAndStatusNotOrderByDueDateAsc(Long playerId, LocalDate leftDate, Installment.Status status);
+
+    // 2. या बिलाच्या नंतरची सर्व बिले डिलीट करा
+    @Modifying
+    @Query("DELETE FROM Installment i WHERE i.player.id = :playerId AND i.dueDate > :targetDate AND i.status != 'PAID'")
+    void deleteBillsAfterDate(@Param("playerId") Long playerId, @Param("targetDate") LocalDate targetDate);
+
+    // ✅ NEW SELECT QUERY: Find bills that need to be deleted
+    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId AND i.dueDate > :targetDate AND i.status != 'PAID'")
+    List<Installment> findFuturePendingBills(@Param("playerId") Long playerId, @Param("targetDate") LocalDate targetDate);
+
 }
 

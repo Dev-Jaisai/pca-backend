@@ -1,7 +1,9 @@
 package com.pca.service;
 
+import com.pca.enums.LeftOption;
 import com.pca.model.*;
 import com.pca.repository.InstallmentRepository;
+import com.pca.repository.PaymentRepository;
 import com.pca.repository.PlayerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+
+import static com.pca.enums.LeftOption.*;
 
 @Service
 @RequiredArgsConstructor
@@ -19,7 +24,7 @@ public class PlayerLifecycleService {
 
     private final PlayerRepository playerRepository;
     private final InstallmentRepository installmentRepository;
-
+    private final PaymentRepository paymentRepository;
     // Dependency needed for creating fresh bills on activation
     private final InstallmentService installmentService;
     @Transactional
@@ -148,5 +153,86 @@ public class PlayerLifecycleService {
         );
 
         log.info("Generated Welcome Back bill. Start: {}, Due: {}", newBillingStartDate, calculatedDueDate);
+    }
+    @Transactional
+    public void markPlayerLeft(Long playerId, LocalDate leftDate, com.pca.enums.LeftOption option, Double manualAmount) {
+        log.info("Marking player {} LEFT from date {}. Option: {}", playerId, leftDate, option);
+
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new RuntimeException("Player not found"));
+
+        // 1. Safety Check (Future Paid Bills)
+        List<Installment> futurePaidBills = installmentRepository.findFuturePaidBills(playerId, leftDate);
+        if (!futurePaidBills.isEmpty()) {
+            throw new RuntimeException("Warning: Paid bills exist after " + leftDate + ". Refund manually first.");
+        }
+
+        // 🔥 2. FIND TARGET BILL (Next Due Bill after Left Date)
+        Installment targetBill = installmentRepository.findFirstByPlayerIdAndDueDateAfterAndStatusNotOrderByDueDateAsc(
+                playerId,
+                leftDate,
+                Installment.Status.PAID
+        );
+
+        if (targetBill != null) {
+            log.info("Found Target Bill to Update: {} (Due: {})", targetBill.getId(), targetBill.getDueDate());
+
+            // A. Update Target Bill
+            switch (option) {
+                case COLLECT_FULL:
+                    targetBill.setNotes("Student Left on " + leftDate + ". Full Fee Charged.");
+                    break;
+                case COLLECT_PARTIAL:
+                    if (manualAmount != null && manualAmount >= 0) {
+                        targetBill.setAmount(manualAmount);
+                        targetBill.setRemainingAmount(manualAmount - targetBill.getPaidAmount());
+                        targetBill.setNotes("Student Left on " + leftDate + ". Partial Charge: " + manualAmount);
+                    }
+                    break;
+                case WAIVE_OFF:
+                    targetBill.setAmount(0.0);
+                    targetBill.setRemainingAmount(0.0);
+                    targetBill.setStatus(Installment.Status.SKIPPED);
+                    targetBill.setNotes("Student Left on " + leftDate + ". Waived Off.");
+                    break;
+            }
+            installmentRepository.save(targetBill);
+
+            // B. SAFE DELETE (Future Bills)
+            // 🔥 Pass targetBill DueDate to delete everything AFTER it
+            performSafeDelete(playerId, targetBill.getDueDate());
+
+        } else {
+            // No target bill found, delete everything after Left Date
+            performSafeDelete(playerId, leftDate);
+        }
+
+        // 3. Mark Inactive
+        player.setIsActive(false);
+        player.setNotes(player.getNotes() + " | LEFT: " + leftDate);
+        playerRepository.save(player);
+    }
+
+    // 🔥🔥🔥 HELPER METHOD FOR SAFE DELETE 🔥🔥🔥
+    private void performSafeDelete(Long playerId, LocalDate afterDate) {
+        // 1. Find bills needed to be deleted
+        List<Installment> billsToDelete = installmentRepository.findFuturePendingBills(playerId, afterDate);
+
+        if (!billsToDelete.isEmpty()) {
+            // 2. Extract IDs
+            List<Long> billIds = billsToDelete.stream()
+                    .map(Installment::getId)
+                    .collect(Collectors.toList());
+
+            // 3. Delete related Payments first (Using existing efficient method)
+            paymentRepository.deleteByInstallmentIds(billIds);
+            log.info("Deleted payments associated with {} future bills.", billIds.size());
+
+            // 4. Now Delete the Bills
+            installmentRepository.deleteAll(billsToDelete);
+            log.info("Deleted {} future bills after date {}", billsToDelete.size(), afterDate);
+        } else {
+            log.info("No future bills found to delete after {}", afterDate);
+        }
     }
 }

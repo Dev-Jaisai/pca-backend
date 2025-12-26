@@ -1,7 +1,6 @@
 package com.pca.dto;
 
 import lombok.*;
-
 import java.time.LocalDate;
 
 @Data
@@ -9,7 +8,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 public class InstallmentResponseDTO {
-    private Long installmentId;   // instead of 'id'
+    private Long installmentId;
     private Long playerId;
     private String playerName;
     private Integer periodMonth;
@@ -19,4 +18,7 @@ public class InstallmentResponseDTO {
     private Double remainingAmount;
     private String status;
     private LocalDate dueDate;
+
+    // 🔥🔥 ADD THIS FIELD 🔥🔥
+    private String notes;
 }

@@ -37,4 +37,15 @@ public class PlayerLifecycleController {
         lifecycleService.activatePlayer(id, date);
         return ResponseEntity.ok("Player activated successfully");
     }
+
+    @PostMapping("/{id}/left")
+    public ResponseEntity<String> markPlayerLeft(
+            @PathVariable Long id,
+            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam("option") com.pca.enums.LeftOption option,
+            @RequestParam(value = "amount", required = false) Double amount) {
+
+        lifecycleService.markPlayerLeft(id, date, option, amount);
+        return ResponseEntity.ok("Player marked as LEFT successfully");
+    }
 }
