@@ -110,4 +110,19 @@ public class InstallmentController {
         String result = installmentService.bulkExtendForHolidays(request);
         return ResponseEntity.ok(result);
     }
+
+    @PostMapping("/{id}/revert")
+    public ResponseEntity<String> revertPayment(@PathVariable Long id) {
+        installmentService.revertPayment(id);
+        return ResponseEntity.ok("Payment reverted successfully. Bill is now PENDING.");
+    }
+
+    @PutMapping("/{id}/adjust")
+    public ResponseEntity<InstallmentResponseDTO> adjustBill(
+            @PathVariable Long id,
+            @RequestParam Double amount,
+            @RequestParam String reason
+    ) {
+        return ResponseEntity.ok(installmentService.adjustInstallmentAmount(id, amount, reason));
+    }
 }

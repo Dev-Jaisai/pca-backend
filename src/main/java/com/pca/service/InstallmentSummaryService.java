@@ -4,7 +4,6 @@ import com.pca.dto.PlayerInstallmentSummaryDTO;
 import com.pca.repository.InstallmentRepository;
 import com.pca.repository.proj.PlayerInstallmentSummaryProjection;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -39,6 +38,7 @@ public class InstallmentSummaryService {
                 installmentRepository.findSummaryByPeriod(periodMonth, year);
 
         return rows.stream().map(r -> {
+            // Calculation BigDecimal madhyech theva (Accurate asate)
             BigDecimal installmentAmount = r.getInstallmentAmount() != null ? r.getInstallmentAmount() : BigDecimal.ZERO;
             BigDecimal totalPaid = r.getTotalPaid() != null ? r.getTotalPaid() : BigDecimal.ZERO;
             BigDecimal remaining = installmentAmount.subtract(totalPaid);
@@ -59,14 +59,19 @@ public class InstallmentSummaryService {
                     .phone(r.getPhone())
                     .groupName(r.getGroupName())
                     .joinDate(r.getJoinDate())
-                    .installmentAmount(installmentAmount)
-                    .totalPaid(totalPaid)
-                    .remaining(remaining)
+
+                    // 🔥🔥🔥 FIX: Convert BigDecimal to Double using .doubleValue() 🔥🔥🔥
+                    .installmentAmount(installmentAmount.doubleValue())
+                    .totalPaid(totalPaid.doubleValue())
+                    .remaining(remaining.doubleValue())
+
                     .dueDate(r.getDueDate())
                     .status(status)
                     .installmentId(r.getInstallmentId())
+                    // Notes field DTO madhye add kela asel tar to ithe pass karu shakta,
+                    // pan Projection madhye 'getNotes()' asne garjeche ahe.
+                    // .notes(null)
                     .build();
         }).collect(Collectors.toList());
     }
-
 }

@@ -9,7 +9,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -23,10 +22,6 @@ public class PlayerInstallmentSummaryService {
 
     private final PlayerInstallmentSummaryRepository repository;
 
-    /**
-     * Get summary for a specific month (e.g. "2025-12").
-     * Uses the native query with year/month filter.
-     */
     public List<PlayerInstallmentSummaryDTO> getSummary(String monthParam) {
         if (monthParam == null || !monthParam.matches("\\d{4}-\\d{2}")) {
             throw new IllegalArgumentException("Invalid month format. Expected YYYY-MM");
@@ -40,10 +35,6 @@ public class PlayerInstallmentSummaryService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Get ALL installments (Past, Present, Future).
-     * Uses the native query with NO filter.
-     */
     public List<PlayerInstallmentSummaryDTO> getAllInstallmentsSummary() {
         List<Object[]> rows = repository.fetchAllSummary();
         return rows.stream()
@@ -51,20 +42,12 @@ public class PlayerInstallmentSummaryService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * FIX: Added missing method.
-     * Reuses the main list and filters by Player ID.
-     */
     public List<PlayerInstallmentSummaryDTO> getSummaryForPlayer(Long playerId) {
         return getAllInstallmentsSummary().stream()
                 .filter(dto -> dto.getPlayerId().equals(playerId))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * FIX: Added missing method.
-     * Reuses the main list and filters by Status.
-     */
     public List<PlayerInstallmentSummaryDTO> getSummaryByStatus(String status) {
         if (status == null) return new ArrayList<>();
         return getAllInstallmentsSummary().stream()
@@ -72,10 +55,7 @@ public class PlayerInstallmentSummaryService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Maps the raw SQL result (Object[]) to the DTO.
-     * 11: MAX(pay.paid_on) <-- Includes Last Payment Date
-     */
+    // 🔥 FIX 1: Completely removed BigDecimal usage here
     private PlayerInstallmentSummaryDTO mapToDto(Object[] row) {
         try {
             Long playerId = ((Number) row[0]).longValue();
@@ -83,7 +63,6 @@ public class PlayerInstallmentSummaryService {
             String phone = (String) row[2];
             String groupName = (String) row[3];
 
-            // Handle SQL Date vs LocalDate
             LocalDate joinDate = null;
             if (row[4] != null) {
                 if (row[4] instanceof java.sql.Date) joinDate = ((java.sql.Date) row[4]).toLocalDate();
@@ -91,8 +70,10 @@ public class PlayerInstallmentSummaryService {
             }
 
             Long installmentId = row[5] != null ? ((Number) row[5]).longValue() : null;
-            BigDecimal amount = row[6] != null ? BigDecimal.valueOf(((Number) row[6]).doubleValue()) : null;
-            BigDecimal totalPaid = row[7] != null ? BigDecimal.valueOf(((Number) row[7]).doubleValue()) : BigDecimal.ZERO;
+
+            // ✅ Corrected: Directly cast to Double using Number
+            Double amount = row[6] != null ? ((Number) row[6]).doubleValue() : null;
+            Double totalPaid = row[7] != null ? ((Number) row[7]).doubleValue() : 0.0;
 
             LocalDate dueDate = null;
             if (row[8] != null) {
@@ -101,9 +82,10 @@ public class PlayerInstallmentSummaryService {
             }
 
             String status = (String) row[9];
-            BigDecimal remaining = row[10] != null ? BigDecimal.valueOf(((Number) row[10]).doubleValue()) : null;
 
-            // --- Map Last Payment Date ---
+            // ✅ Corrected
+            Double remaining = row[10] != null ? ((Number) row[10]).doubleValue() : null;
+
             LocalDateTime lastPaymentDate = null;
             if (row.length > 11 && row[11] != null) {
                 if (row[11] instanceof java.sql.Timestamp) {
@@ -113,7 +95,11 @@ public class PlayerInstallmentSummaryService {
                 }
             }
 
-            // Fallback status logic
+            String notes = null;
+            if (row.length > 12 && row[12] != null) {
+                notes = (String) row[12];
+            }
+
             if (installmentId != null && status == null) {
                 status = "PENDING";
             } else if (installmentId == null) {
@@ -132,39 +118,38 @@ public class PlayerInstallmentSummaryService {
                     .remaining(remaining)
                     .dueDate(dueDate)
                     .status(status)
-                    .lastPaymentDate(lastPaymentDate) // <--- Correctly populated
+                    .lastPaymentDate(lastPaymentDate)
+                    .notes(notes)
                     .build();
         } catch (Exception e) {
             log.error("Error mapping row for player: " + (row.length > 1 ? row[1] : "Unknown"), e);
-            return null; // or throw
+            return null;
         }
     }
 
-    // ... inside class ...
-
     public Page<PlayerInstallmentSummaryDTO> getAllInstallmentsSummary(Pageable pageable) {
-        // Fetch rows with limit/offset
         List<Object[]> rows = repository.fetchAllSummaryPaginated(
                 pageable.getPageSize(),
                 pageable.getOffset()
         );
 
-        // Get total count
         long total = repository.countAllInstallments();
 
-        // Convert to DTOs
         List<PlayerInstallmentSummaryDTO> dtos = rows.stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
 
         return new PageImpl<>(dtos, pageable, total);
     }
+
     public List<PlayerInstallmentSummaryDTO> getOverdueSummary() {
         List<Object[]> rows = repository.fetchOverdueSummary();
         return rows.stream()
-                .map(this::mapOverdueToDto)  // You'll need a new mapping method
+                .map(this::mapOverdueToDto)
                 .collect(Collectors.toList());
     }
+
+    // 🔥 FIX 2: Completely removed BigDecimal usage here too
     private PlayerInstallmentSummaryDTO mapOverdueToDto(Object[] row) {
         try {
             Long playerId = ((Number) row[0]).longValue();
@@ -178,10 +163,9 @@ public class PlayerInstallmentSummaryService {
                 else if (row[4] instanceof java.sql.Timestamp) joinDate = ((java.sql.Timestamp) row[4]).toLocalDateTime().toLocalDate();
             }
 
-            // Now we have SUM values instead of single installment values
-            BigDecimal totalInstallmentAmount = row[5] != null ? BigDecimal.valueOf(((Number) row[5]).doubleValue()) : BigDecimal.ZERO;
-            Long installmentCount = row[6] != null ? ((Number) row[6]).longValue() : 0L;
-            BigDecimal totalPaid = row[7] != null ? BigDecimal.valueOf(((Number) row[7]).doubleValue()) : BigDecimal.ZERO;
+            // ✅ Corrected: Use ((Number) val).doubleValue()
+            Double totalInstallmentAmount = row[5] != null ? ((Number) row[5]).doubleValue() : 0.0;
+            Double totalPaid = row[7] != null ? ((Number) row[7]).doubleValue() : 0.0;
 
             LocalDate latestDueDate = null;
             if (row[8] != null) {
@@ -189,8 +173,10 @@ public class PlayerInstallmentSummaryService {
                 else if (row[8] instanceof java.sql.Timestamp) latestDueDate = ((java.sql.Timestamp) row[8]).toLocalDateTime().toLocalDate();
             }
 
-            String statuses = (String) row[9];  // Comma-separated statuses
-            BigDecimal totalRemaining = row[10] != null ? BigDecimal.valueOf(((Number) row[10]).doubleValue()) : BigDecimal.ZERO;
+            String statuses = (String) row[9];
+
+            // ✅ Corrected
+            Double totalRemaining = row[10] != null ? ((Number) row[10]).doubleValue() : 0.0;
 
             LocalDateTime lastPaymentDate = null;
             if (row.length > 11 && row[11] != null) {
@@ -201,9 +187,8 @@ public class PlayerInstallmentSummaryService {
                 }
             }
 
-            // Determine overall status
             String overallStatus = "PENDING";
-            if (totalRemaining.doubleValue() == 0) {
+            if (totalRemaining == 0) {
                 overallStatus = "PAID";
             } else if (statuses != null && statuses.contains("OVERDUE")) {
                 overallStatus = "OVERDUE";
@@ -215,12 +200,13 @@ public class PlayerInstallmentSummaryService {
                     .phone(phone)
                     .groupName(groupName)
                     .joinDate(joinDate)
-                    .installmentAmount(totalInstallmentAmount)  // This is now TOTAL amount
+                    .installmentAmount(totalInstallmentAmount)
                     .totalPaid(totalPaid)
                     .remaining(totalRemaining)
-                    .dueDate(latestDueDate)  // Or you might want earliest due date
+                    .dueDate(latestDueDate)
                     .status(overallStatus)
                     .lastPaymentDate(lastPaymentDate)
+                    .notes(null)
                     .build();
         } catch (Exception e) {
             log.error("Error mapping overdue row for player: " + (row.length > 1 ? row[1] : "Unknown"), e);

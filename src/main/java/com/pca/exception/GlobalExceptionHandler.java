@@ -56,4 +56,13 @@ public class GlobalExceptionHandler {
         map.put("message", msg);
         return map;
     }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
+        Map<String, String> error = new HashMap<>();
+        // 🔥 This sends the clean message "Warning: Paid bills exist..."
+        error.put("message", ex.getMessage());
+        error.put("error", "INTERNAL_ERROR");
+        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
 }

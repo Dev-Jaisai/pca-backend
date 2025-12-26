@@ -47,10 +47,8 @@ public class InstallmentService {
                 continue;
             }
 
-            // FIX 1: Updated p.getGroup() to p.getPlayerGroup()
             FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(p.getPlayerGroup(), today);
             if (fee == null) {
-                // FIX 2: Updated p.getGroup() to p.getPlayerGroup() for logging
                 log.warn("No fee found for player {} in group {}", p.getId(),
                         p.getPlayerGroup() == null ? "null" : p.getPlayerGroup().getName());
                 continue;
@@ -86,7 +84,7 @@ public class InstallmentService {
             amount = fee.getMonthlyFee();
         }
 
-        // 🔥 FIX START: Check date immediately 🔥
+        // 🔥 Check date immediately
         LocalDate today = LocalDate.now();
         Installment.Status initialStatus = Installment.Status.PENDING;
 
@@ -94,7 +92,7 @@ public class InstallmentService {
             initialStatus = Installment.Status.OVERDUE;
             log.info("Creating bill as OVERDUE since {} is before {}", req.getDueDate(), today);
         }
-        // 🔥 FIX END
+
         Installment ins = Installment.builder()
                 .player(player)
                 .periodMonth(req.getPeriodMonth())
@@ -102,7 +100,7 @@ public class InstallmentService {
                 .amount(amount)
                 .paidAmount(0.0)
                 .remainingAmount(amount)
-                .status(initialStatus) // ✅ Set the status here
+                .status(initialStatus)
                 .dueDate(req.getDueDate())
                 .build();
 
@@ -130,6 +128,7 @@ public class InstallmentService {
                 .remainingAmount(i.getRemainingAmount())
                 .status(i.getStatus() == null ? null : i.getStatus().name())
                 .dueDate(i.getDueDate())
+                .notes(i.getNotes())
                 .build();
     }
 
@@ -159,13 +158,11 @@ public class InstallmentService {
         LocalDate today = LocalDate.now();
         log.info("Running daily overdue check for date: {}", today);
 
-        // Find installments where dueDate is before today AND remainingAmount > 0
         List<Installment> overdueCandidates = installmentRepository
                 .findByDueDateBeforeAndRemainingAmountGreaterThan(today, 0.0);
 
         int count = 0;
         for (Installment inst : overdueCandidates) {
-            // Only update if it is not already marked as OVERDUE
             if (inst.getStatus() != Installment.Status.OVERDUE) {
                 inst.setStatus(Installment.Status.OVERDUE);
                 installmentRepository.save(inst);
@@ -174,6 +171,7 @@ public class InstallmentService {
         }
         log.info("Updated {} installments to OVERDUE status.", count);
     }
+
     @Transactional
     public InstallmentResponseDTO extendDueDate(InstallmentExtensionDTO req) {
         log.info("Updating due date for installment {} to {}", req.getInstallmentId(), req.getNewDueDate());
@@ -181,20 +179,16 @@ public class InstallmentService {
         Installment installment = installmentRepository.findById(req.getInstallmentId())
                 .orElseThrow(() -> new ResourceNotFoundException("Installment not found: " + req.getInstallmentId()));
 
-        // 1. नवीन तारीख सेट करा
         installment.setDueDate(req.getNewDueDate());
 
         // 🔥 FIX: Check BOTH directions (Future & Past)
-        // जर पैसे भरायचे बाकी असतील, तरच स्टेटस बदला (PAID असेल तर हात लावू नका)
         if (installment.getRemainingAmount() > 0) {
             LocalDate today = LocalDate.now();
 
             if (req.getNewDueDate().isBefore(today)) {
-                // Case A: जर नवीन तारीख आजच्या आधीची असेल -> तर OVERDUE करा
                 installment.setStatus(Installment.Status.OVERDUE);
                 log.info("Date is in past. Status updated to OVERDUE for id {}", installment.getId());
             } else {
-                // Case B: जर नवीन तारीख आज किंवा फ्युचर असेल -> तर PENDING करा
                 installment.setStatus(Installment.Status.PENDING);
                 log.info("Date is in future. Status updated to PENDING for id {}", installment.getId());
             }
@@ -203,6 +197,7 @@ public class InstallmentService {
         Installment saved = installmentRepository.save(installment);
         return toDto(saved);
     }
+
     @Transactional
     public void createInstallmentForPlayer(Long playerId, int month, int year, LocalDate dueDate, Double amountOverride) {
         Player player = playerRepository.findById(playerId)
@@ -210,13 +205,11 @@ public class InstallmentService {
 
         Double amount = amountOverride;
 
-
-        // If no specific amount provided, fetch the group fee
         if (amount == null) {
             FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(player.getPlayerGroup(), LocalDate.now());
             if (fee == null) {
                 log.warn("Skipping auto-installment for player {}: No fee structure found.", playerId);
-                return; // Exit safely if no fee is defined
+                return;
             }
             amount = fee.getMonthlyFee();
         }
@@ -233,69 +226,24 @@ public class InstallmentService {
                 .amount(amount)
                 .paidAmount(0.0)
                 .remainingAmount(amount)
-                .status(initialStatus) // ✅ Set Status
+                .status(initialStatus)
                 .dueDate(dueDate)
                 .build();
 
         installmentRepository.save(ins);
-
-        // लॉग मध्ये पण Status प्रिंट करा म्हणजे खात्री होईल
         log.info("Auto-generated installment for player {} (Month: {}/{}) Status: {}", playerId, month, year, initialStatus);
     }
 
-    //
-//    @Transactional
-//    public String bulkExtendDueDate(com.pca.dto.BulkExtendDTO req) {
-//        log.info("Bulk extending due dates. Group: {}, Days: {}, Month: {}/{}",
-//                req.getGroupId(), req.getDaysToAdd(), req.getMonth(), req.getYear());
-//
-//        // 1. Installments shodha (Paid soḍun baki sagle)
-//        List<Installment> list = installmentRepository.findForBulkExtension(
-//                req.getMonth(),
-//                req.getYear(),
-//                req.getGroupId()
-//        );
-//
-//        if (list.isEmpty()) {
-//            return "No pending installments found for this selection.";
-//        }
-//
-//        int count = 0;
-//        LocalDate today = LocalDate.now();
-//
-//        for (Installment inst : list) {
-//            // 2. Junya date madhye divas add kara
-//            LocalDate oldDate = inst.getDueDate();
-//            if (oldDate == null) continue; // Safety check
-//
-//            LocalDate newDate = oldDate.plusDays(req.getDaysToAdd());
-//            inst.setDueDate(newDate);
-//
-//            // 3. Status Reset Logic (Imp!)
-//            // Jar status OVERDUE hota, pan navin date future madhye ahe, tar PENDING kara.
-//            if (inst.getStatus() == Installment.Status.OVERDUE) {
-//                if (!newDate.isBefore(today)) { // Jar aaj kiva future date ahe
-//                    inst.setStatus(Installment.Status.PENDING);
-//                }
-//            }
-//            count++;
-//        }
-//
-//        installmentRepository.saveAll(list);
-//        return "Successfully extended due dates for " + count + " players.";
-//    }
     @Transactional
     public String bulkExtendForHolidays(BulkExtendDTO req) {
-        // 1. Divas Calculate kara
         long daysToAdd = java.time.temporal.ChronoUnit.DAYS.between(
                 req.getHolidayStart(), req.getHolidayEnd()) + 1;
 
         log.info("Extending due dates starting from {} by {} days due to holiday end {}.",
                 req.getHolidayStart(), daysToAdd, req.getHolidayEnd());
 
-        // 2. Query Call (Start date chya pudhche sagle pending items)
         List<Installment> list = installmentRepository.findForFutureExtension(
-                req.getHolidayStart(), // Fakt start date pathva
+                req.getHolidayStart(),
                 req.getGroupId()
         );
 
@@ -303,13 +251,11 @@ public class InstallmentService {
             return "No upcoming installments found to extend.";
         }
 
-        // 3. Update Dates
         for (Installment inst : list) {
             LocalDate oldDate = inst.getDueDate();
             LocalDate newDate = oldDate.plusDays(daysToAdd);
             inst.setDueDate(newDate);
 
-            // Status update: Jar chukun overdue disat asel pan navin date future madhye geli, tar Pending kara
             if (inst.getStatus() == Installment.Status.OVERDUE && !newDate.isBefore(LocalDate.now())) {
                 inst.setStatus(Installment.Status.PENDING);
             }
@@ -319,4 +265,67 @@ public class InstallmentService {
         return "Applied holiday extension (" + daysToAdd + " days) to " + list.size() + " players.";
     }
 
+    @Transactional
+    public void revertPayment(Long installmentId) {
+        log.info("Reversing payment for installment {}", installmentId);
+
+        Installment inst = installmentRepository.findById(installmentId)
+                .orElseThrow(() -> new RuntimeException("Installment not found"));
+
+        if (inst.getStatus() != Installment.Status.PAID) {
+            throw new RuntimeException("Only PAID bills can be reverted.");
+        }
+
+        inst.setPaidAmount(0.0);
+        inst.setRemainingAmount(inst.getAmount());
+        inst.setStatus(Installment.Status.PENDING);
+
+        String oldNotes = inst.getNotes() != null ? inst.getNotes() : "";
+        inst.setNotes(oldNotes + " | Payment Reverted manually.");
+
+        installmentRepository.save(inst);
+        log.info("Payment reverted successfully for installment {}", installmentId);
+    }
+
+    // 🔥🔥🔥 NEW: Adjust Installment Amount (Discount / Correction) 🔥🔥🔥
+    @Transactional
+    public InstallmentResponseDTO adjustInstallmentAmount(Long installmentId, Double newAmount, String adjustmentReason) {
+        log.info("Adjusting installment {} to new amount {}", installmentId, newAmount);
+
+        Installment inst = installmentRepository.findById(installmentId)
+                .orElseThrow(() -> new RuntimeException("Installment not found"));
+
+        if (inst.getStatus() == Installment.Status.PAID) {
+            throw new RuntimeException("Cannot adjust a fully PAID bill. Please 'Revert Payment' first.");
+        }
+
+        if (newAmount < 0) {
+            throw new RuntimeException("Amount cannot be negative.");
+        }
+
+        Double oldAmount = inst.getAmount();
+        inst.setAmount(newAmount);
+
+        // Recalculate remaining (New Amount - Already Paid)
+        double newRemaining = newAmount - inst.getPaidAmount();
+
+        if (newRemaining <= 0) {
+            newRemaining = 0.0;
+            inst.setStatus(Installment.Status.PAID);
+        } else {
+            // Check overdue if still pending
+            if (inst.getDueDate().isBefore(LocalDate.now())) {
+                inst.setStatus(Installment.Status.OVERDUE);
+            } else {
+                inst.setStatus(Installment.Status.PENDING);
+            }
+        }
+        inst.setRemainingAmount(newRemaining);
+
+        String noteEntry = String.format(" | Adjusted: %.0f -> %.0f (%s)", oldAmount, newAmount, adjustmentReason);
+        inst.setNotes((inst.getNotes() != null ? inst.getNotes() : "") + noteEntry);
+
+        Installment saved = installmentRepository.save(inst);
+        return toDto(saved);
+    }
 }

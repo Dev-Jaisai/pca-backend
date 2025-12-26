@@ -62,19 +62,31 @@ public interface PlayerInstallmentSummaryRepository extends Repository<Player, L
 
 // ... inside the interface ...
 
-    // 3. PAGINATED Query (Used for Infinite Scroll)
     @Query(value = """
         SELECT 
-            p.id AS playerId, p.name AS playerName, p.phone AS phone, g.name AS groupName, p.join_date AS joinDate,
-            i.id AS installmentId, i.amount AS installmentAmount, COALESCE(SUM(pay.amount), 0) AS totalPaid,
-            i.due_date AS dueDate, i.status AS status, i.remaining_amount AS remaining, MAX(pay.paid_on) AS lastPaymentDate
+            p.id AS playerId,               -- 0
+            p.name AS playerName,           -- 1
+            p.phone AS phone,               -- 2
+            g.name AS groupName,            -- 3
+            p.join_date AS joinDate,        -- 4
+            
+            i.id AS installmentId,          -- 5
+            i.amount AS installmentAmount,  -- 6
+            COALESCE(SUM(pay.amount), 0) AS totalPaid, -- 7
+            i.due_date AS dueDate,          -- 8
+            i.status AS status,             -- 9
+            i.remaining_amount AS remaining,-- 10
+            MAX(pay.paid_on) AS lastPaymentDate, -- 11
+            
+            i.notes AS notes                -- 🔥🔥🔥 12. NEW FIELD ADDED HERE
+            
         FROM player p
         LEFT JOIN player_group g ON p.group_id = g.id
         JOIN installment i ON i.player_id = p.id 
         LEFT JOIN payment pay ON pay.installment_id = i.id
-        GROUP BY p.id, p.name, p.phone, g.name, p.join_date, i.id, i.amount, i.due_date, i.status, i.remaining_amount
         
-        -- CUSTOM SORT ORDER:
+        GROUP BY p.id, p.name, p.phone, g.name, p.join_date, i.id, i.amount, i.due_date, i.status, i.remaining_amount, i.notes
+        
         ORDER BY 
             CASE 
                 WHEN i.status = 'PENDING' THEN 1 
