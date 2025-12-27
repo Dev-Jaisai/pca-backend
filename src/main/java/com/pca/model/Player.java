@@ -2,7 +2,6 @@ package com.pca.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDate;
 
 @Entity
@@ -40,9 +39,12 @@ public class Player {
     @Builder.Default
     private Integer paymentCycleMonths = 1;
 
-    // 🔥 NEW FIELD: ACTIVE STATUS
-    // True = Bill yeil, False = Bill yenar nahi (Holiday/Left)
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;
+
+    // 🔥🔥🔥 NEW FIELD FOR ADVANCE PAYMENT 🔥🔥🔥
+    @Column(name = "credit_balance")
+    @Builder.Default
+    private Double creditBalance = 0.0;
 }

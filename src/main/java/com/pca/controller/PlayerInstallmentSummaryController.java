@@ -29,12 +29,12 @@ public class PlayerInstallmentSummaryController {
         return ResponseEntity.ok(list);
     }
 
-/*
-    */
+    /*
+     */
 /**
-     * GET /api/players/installment-summary/all
-     * Returns ALL installments for ALL players (not month-filtered)
-     *//*
+ * GET /api/players/installment-summary/all
+ * Returns ALL installments for ALL players (not month-filtered)
+ *//*
 
     @GetMapping("/installment-summary/all")
     public ResponseEntity<List<PlayerInstallmentSummaryDTO>> getAllSummary() {

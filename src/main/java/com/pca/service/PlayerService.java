@@ -169,6 +169,8 @@ public class PlayerService {
         return playerRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Player not found: " + id));
     }
     // खालील मेथड रिप्लेस करा
+    // PlayerService.java मध्ये toDto method:
+
     private PlayerResponseDTO toDto(Player p) {
         return PlayerResponseDTO.builder()
                 .id(p.getId())
@@ -180,12 +182,10 @@ public class PlayerService {
                 .groupName(p.getPlayerGroup() != null ? p.getPlayerGroup().getName() : null)
                 .notes(p.getNotes())
                 .photoUrl(p.getPhotoUrl())
-
-                // ✅ हे ऍड करा: आता Backend फ्रंटेंडला डेटा पाठवेल
                 .billingDay(p.getBillingDay())
                 .paymentCycleMonths(p.getPaymentCycleMonths())
-                .isActive(p.getIsActive()) // OR p.isActive() depending on your getter
-
+                .isActive(p.getIsActive())
+                .creditBalance(p.getCreditBalance()) // 🔥 NEW
                 .build();
     }
 }
