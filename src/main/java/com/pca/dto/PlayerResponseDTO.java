@@ -1,3 +1,5 @@
+// PlayerResponseDTO.java
+
 package com.pca.dto;
 
 import lombok.Builder;
@@ -18,7 +20,8 @@ public class PlayerResponseDTO {
     private String photoUrl;
     private Integer billingDay;
     private Integer paymentCycleMonths;
-
-    // 🔥 CRITICAL: Add this field
     private Boolean isActive;
+
+    // 🔥 NEW FIELD
+    private Double creditBalance;
 }

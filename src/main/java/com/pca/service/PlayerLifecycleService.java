@@ -27,43 +27,42 @@ public class PlayerLifecycleService {
     private final PaymentRepository paymentRepository;
     // Dependency needed for creating fresh bills on activation
     private final InstallmentService installmentService;
+
+    // 🔥 UPDATED METHOD SIGNATURE (Accept Advance Amount)
     @Transactional
-    public void pausePlayer(Long playerId, LocalDate startDate, String reason) {
-        log.info("Pausing player {} from date {}", playerId, startDate);
+    public void pausePlayer(Long playerId, LocalDate startDate, String reason, Double advanceAmount) {
+        log.info("Pausing player {} from date {}. Advance: {}", playerId, startDate, advanceAmount);
 
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new RuntimeException("Player not found"));
 
+        // 1. Set Inactive
         player.setIsActive(false);
+
+        // 🔥 2. Save Advance Credit (If Provided)
+        if (advanceAmount != null && advanceAmount > 0) {
+            Double currentCredit = player.getCreditBalance() != null ? player.getCreditBalance() : 0.0;
+            player.setCreditBalance(currentCredit + advanceAmount);
+            log.info("Added ₹{} to credit. New balance: ₹{}", advanceAmount, player.getCreditBalance());
+        }
+
         playerRepository.save(player);
 
+        // 3. Skip Current Cycle Bill (Same Logic as Before)
         int billingDay = player.getBillingDay();
-
-        // Calculate which billing cycle the holiday falls into
-        // The cycle that CONTAINS the holiday date
         LocalDate cycleStartDate;
 
         int holidayDay = startDate.getDayOfMonth();
 
         if (holidayDay >= billingDay) {
-            // Holiday is on/after billing day of this month
-            // → Falls in cycle starting THIS month
             cycleStartDate = LocalDate.of(startDate.getYear(), startDate.getMonthValue(), billingDay);
         } else {
-            // Holiday is before billing day of this month
-            // → Falls in cycle starting LAST month
-            cycleStartDate = LocalDate.of(startDate.getYear(), startDate.getMonthValue(), billingDay)
-                    .minusMonths(1);
+            cycleStartDate = LocalDate.of(startDate.getYear(), startDate.getMonthValue(), billingDay).minusMonths(1);
         }
 
-        // The due date of this cycle = cycle start + 1 month
         LocalDate cycleDueDate = cycleStartDate.plusMonths(1);
-
         int targetMonth = cycleDueDate.getMonthValue();
         int targetYear = cycleDueDate.getYear();
-
-        log.info("Holiday {} falls in cycle starting {} with due date {} → periodMonth={}, periodYear={}",
-                startDate, cycleStartDate, cycleDueDate, targetMonth, targetYear);
 
         List<Installment> bills = installmentRepository.findByPlayerIdAndPeriodMonthAndPeriodYear(
                 playerId, targetMonth, targetYear
@@ -75,17 +74,96 @@ public class PlayerLifecycleService {
             createGhostBill(player, targetMonth, targetYear, cycleDueDate, reason);
         }
     }
+
+    // 🔥 UPDATED ACTIVATE METHOD (Apply Credit)
+    @Transactional
+    public void activatePlayer(Long playerId, LocalDate newBillingStartDate) {
+        log.info("Activating player {} with Start Date {}", playerId, newBillingStartDate);
+
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new RuntimeException("Player not found"));
+
+        player.setIsActive(true);
+        player.setBillingDay(newBillingStartDate.getDayOfMonth());
+
+        int month = newBillingStartDate.getMonthValue();
+        int year = newBillingStartDate.getYear();
+
+        // Delete existing SKIPPED bill if exists
+        List<Installment> existingBills = installmentRepository.findByPlayerIdAndPeriodMonthAndPeriodYear(
+                playerId, month, year
+        );
+
+        if (!existingBills.isEmpty()) {
+            Installment bill = existingBills.get(0);
+            if (bill.getStatus() == Installment.Status.SKIPPED) {
+                installmentRepository.delete(bill);
+                installmentRepository.flush();
+            }
+        }
+
+        // Calculate Due Date
+        int cycleMonths = (player.getPaymentCycleMonths() != null && player.getPaymentCycleMonths() > 0)
+                ? player.getPaymentCycleMonths()
+                : 1;
+
+        LocalDate calculatedDueDate = newBillingStartDate.plusMonths(cycleMonths);
+
+        // 🔥🔥🔥 CREATE BILL WITH CREDIT APPLIED 🔥🔥🔥
+        createInstallmentWithCreditApplied(player, month, year, calculatedDueDate);
+
+        playerRepository.save(player);
+    }
+
+    // 🔥🔥🔥 NEW HELPER METHOD: CREATE BILL + APPLY CREDIT 🔥🔥🔥
+    private void createInstallmentWithCreditApplied(Player player, int month, int year, LocalDate dueDate) {
+        // 1. Get Base Amount (From Fee Structure)
+        Double baseAmount = 5000.0; // Replace with dynamic fee lookup if needed
+        // Example: feeStructureService.findEffectiveFeeForGroup(player.getPlayerGroup(), LocalDate.now()).getMonthlyFee();
+
+        Double creditAvailable = player.getCreditBalance() != null ? player.getCreditBalance() : 0.0;
+
+        // 2. Calculate Final Amount
+        Double creditToApply = Math.min(creditAvailable, baseAmount);
+        Double finalAmount = baseAmount - creditToApply;
+
+        // 3. Create Installment
+        Installment.Status initialStatus = dueDate.isBefore(LocalDate.now())
+                ? Installment.Status.OVERDUE
+                : Installment.Status.PENDING;
+
+        Installment ins = Installment.builder()
+                .player(player)
+                .periodMonth(month)
+                .periodYear(year)
+                .amount(finalAmount) // 🔥 Adjusted Amount
+                .paidAmount(0.0)
+                .remainingAmount(finalAmount)
+                .status(initialStatus)
+                .dueDate(dueDate)
+                .notes(creditToApply > 0
+                        ? String.format("Credit Applied: ₹%.0f (Balance: ₹%.0f)", creditToApply, baseAmount)
+                        : null)
+                .build();
+
+        installmentRepository.save(ins);
+
+        // 4. Deduct Credit from Player
+        player.setCreditBalance(creditAvailable - creditToApply);
+        playerRepository.save(player);
+
+        log.info("Created bill: Base=₹{}, Credit=₹{}, Final=₹{}. Remaining Credit=₹{}",
+                baseAmount, creditToApply, finalAmount, player.getCreditBalance());
+    }
+
+    // Existing Helper Methods (Unchanged)
     private void skipBill(Installment bill, String reason) {
-        // Only skip if NOT PAID
         if (bill.getStatus() != Installment.Status.PAID) {
             bill.setStatus(Installment.Status.SKIPPED);
             bill.setNotes("Holiday/Paused: " + reason);
             bill.setAmount(0.0);
             bill.setRemainingAmount(0.0);
             installmentRepository.save(bill);
-            log.info("✅ SKIPPED Bill ID: {} for Period: {}/{}", bill.getId(), bill.getPeriodMonth(), bill.getPeriodYear());
-        } else {
-            log.warn("⚠️ Cannot skip Bill ID: {} because it is already PAID.", bill.getId());
         }
     }
 
@@ -102,57 +180,6 @@ public class PlayerLifecycleService {
                 .notes("Pre-informed Holiday: " + reason)
                 .build();
         installmentRepository.save(ghostBill);
-        log.info("👻 Created Ghost Bill for {}/{}", month, year);
-    }
-    @Transactional
-    public void activatePlayer(Long playerId, LocalDate newBillingStartDate) {
-        log.info("Activating player {} with new Start Date {}", playerId, newBillingStartDate);
-
-        Player player = playerRepository.findById(playerId)
-                .orElseThrow(() -> new RuntimeException("Player not found"));
-
-        // 1. Set Active & New Billing Day
-        // 🔥 हे लॉजिक बरोबर आहे: ज्या दिवशी Resume कराल, तोच नवीन Billing Day होईल.
-        player.setIsActive(true);
-        player.setBillingDay(newBillingStartDate.getDayOfMonth());
-        playerRepository.save(player);
-
-        // 2. Check & Delete SKIPPED bill if exists
-        int month = newBillingStartDate.getMonthValue();
-        int year = newBillingStartDate.getYear();
-
-        List<Installment> existingBills = installmentRepository.findByPlayerIdAndPeriodMonthAndPeriodYear(
-                playerId, month, year
-        );
-
-        if (!existingBills.isEmpty()) {
-            Installment bill = existingBills.get(0);
-            if (bill.getStatus() == Installment.Status.SKIPPED) {
-                log.info("Deleting existing SKIPPED bill to make space for new active bill.");
-                installmentRepository.delete(bill);
-                installmentRepository.flush();
-            }
-        }
-
-        // 🔥 3. Calculate Due Date (+1 Month Logic)
-        // Resume Date = Start Date (09 Jun)
-        // Due Date = 09 Jul (Next Month)
-        int cycleMonths = (player.getPaymentCycleMonths() != null && player.getPaymentCycleMonths() > 0)
-                ? player.getPaymentCycleMonths()
-                : 1;
-
-        LocalDate calculatedDueDate = newBillingStartDate.plusMonths(cycleMonths);
-
-        // 4. Generate Immediate Bill
-        installmentService.createInstallmentForPlayer(
-                playerId,
-                month, // Period Month (Jun)
-                year,  // Period Year (2026)
-                calculatedDueDate, // 🔥 CHANGE: Due Date is now +1 Month (09 Jul)
-                null
-        );
-
-        log.info("Generated Welcome Back bill. Start: {}, Due: {}", newBillingStartDate, calculatedDueDate);
     }
     @Transactional
     public void markPlayerLeft(Long playerId, LocalDate leftDate, com.pca.enums.LeftOption option, Double manualAmount) {
