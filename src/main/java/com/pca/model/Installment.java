@@ -47,6 +47,7 @@ public class Installment {
         PAID,
         OVERDUE,
         SKIPPED,   // ✅ NEW: Holiday sathi
-        CANCELLED  // ✅ NEW: Left sathi
+        REFUNDED,   // 🔥 Make sure this is added
+        CANCELLED   // 🔥 Make sure this is added
     }
 }

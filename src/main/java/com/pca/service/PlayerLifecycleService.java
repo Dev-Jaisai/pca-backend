@@ -12,10 +12,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
-
-import static com.pca.enums.LeftOption.*;
 
 @Service
 @RequiredArgsConstructor
@@ -24,11 +20,12 @@ public class PlayerLifecycleService {
 
     private final PlayerRepository playerRepository;
     private final InstallmentRepository installmentRepository;
-    private final PaymentRepository paymentRepository;
-    // Dependency needed for creating fresh bills on activation
+    private final PaymentRepository paymentRepository; // (Not used for delete anymore, but kept if needed)
+
+    // 🔥 Used for Cancel Logic & Creating Bills
     private final InstallmentService installmentService;
 
-    // 🔥 UPDATED METHOD SIGNATURE (Accept Advance Amount)
+    // --- PAUSE PLAYER (Unchanged) ---
     @Transactional
     public void pausePlayer(Long playerId, LocalDate startDate, String reason, Double advanceAmount) {
         log.info("Pausing player {} from date {}. Advance: {}", playerId, startDate, advanceAmount);
@@ -36,22 +33,16 @@ public class PlayerLifecycleService {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new RuntimeException("Player not found"));
 
-        // 1. Set Inactive
         player.setIsActive(false);
 
-        // 🔥 2. Save Advance Credit (If Provided)
         if (advanceAmount != null && advanceAmount > 0) {
             Double currentCredit = player.getCreditBalance() != null ? player.getCreditBalance() : 0.0;
             player.setCreditBalance(currentCredit + advanceAmount);
-            log.info("Added ₹{} to credit. New balance: ₹{}", advanceAmount, player.getCreditBalance());
         }
-
         playerRepository.save(player);
 
-        // 3. Skip Current Cycle Bill (Same Logic as Before)
         int billingDay = player.getBillingDay();
         LocalDate cycleStartDate;
-
         int holidayDay = startDate.getDayOfMonth();
 
         if (holidayDay >= billingDay) {
@@ -75,7 +66,7 @@ public class PlayerLifecycleService {
         }
     }
 
-    // 🔥 UPDATED ACTIVATE METHOD (Apply Credit)
+    // --- ACTIVATE PLAYER (Unchanged) ---
     @Transactional
     public void activatePlayer(Long playerId, LocalDate newBillingStartDate) {
         log.info("Activating player {} with Start Date {}", playerId, newBillingStartDate);
@@ -89,7 +80,6 @@ public class PlayerLifecycleService {
         int month = newBillingStartDate.getMonthValue();
         int year = newBillingStartDate.getYear();
 
-        // Delete existing SKIPPED bill if exists
         List<Installment> existingBills = installmentRepository.findByPlayerIdAndPeriodMonthAndPeriodYear(
                 playerId, month, year
         );
@@ -102,32 +92,21 @@ public class PlayerLifecycleService {
             }
         }
 
-        // Calculate Due Date
         int cycleMonths = (player.getPaymentCycleMonths() != null && player.getPaymentCycleMonths() > 0)
                 ? player.getPaymentCycleMonths()
                 : 1;
 
         LocalDate calculatedDueDate = newBillingStartDate.plusMonths(cycleMonths);
-
-        // 🔥🔥🔥 CREATE BILL WITH CREDIT APPLIED 🔥🔥🔥
         createInstallmentWithCreditApplied(player, month, year, calculatedDueDate);
-
         playerRepository.save(player);
     }
 
-    // 🔥🔥🔥 NEW HELPER METHOD: CREATE BILL + APPLY CREDIT 🔥🔥🔥
     private void createInstallmentWithCreditApplied(Player player, int month, int year, LocalDate dueDate) {
-        // 1. Get Base Amount (From Fee Structure)
-        Double baseAmount = 5000.0; // Replace with dynamic fee lookup if needed
-        // Example: feeStructureService.findEffectiveFeeForGroup(player.getPlayerGroup(), LocalDate.now()).getMonthlyFee();
-
+        Double baseAmount = 5000.0;
         Double creditAvailable = player.getCreditBalance() != null ? player.getCreditBalance() : 0.0;
-
-        // 2. Calculate Final Amount
         Double creditToApply = Math.min(creditAvailable, baseAmount);
         Double finalAmount = baseAmount - creditToApply;
 
-        // 3. Create Installment
         Installment.Status initialStatus = dueDate.isBefore(LocalDate.now())
                 ? Installment.Status.OVERDUE
                 : Installment.Status.PENDING;
@@ -136,7 +115,7 @@ public class PlayerLifecycleService {
                 .player(player)
                 .periodMonth(month)
                 .periodYear(year)
-                .amount(finalAmount) // 🔥 Adjusted Amount
+                .amount(finalAmount)
                 .paidAmount(0.0)
                 .remainingAmount(finalAmount)
                 .status(initialStatus)
@@ -148,15 +127,10 @@ public class PlayerLifecycleService {
 
         installmentRepository.save(ins);
 
-        // 4. Deduct Credit from Player
         player.setCreditBalance(creditAvailable - creditToApply);
         playerRepository.save(player);
-
-        log.info("Created bill: Base=₹{}, Credit=₹{}, Final=₹{}. Remaining Credit=₹{}",
-                baseAmount, creditToApply, finalAmount, player.getCreditBalance());
     }
 
-    // Existing Helper Methods (Unchanged)
     private void skipBill(Installment bill, String reason) {
         if (bill.getStatus() != Installment.Status.PAID) {
             bill.setStatus(Installment.Status.SKIPPED);
@@ -181,6 +155,8 @@ public class PlayerLifecycleService {
                 .build();
         installmentRepository.save(ghostBill);
     }
+
+    // 🔥🔥🔥 MARK PLAYER LEFT (UPDATED TO CANCEL INSTEAD OF DELETE) 🔥🔥🔥
     @Transactional
     public void markPlayerLeft(Long playerId, LocalDate leftDate, com.pca.enums.LeftOption option, Double manualAmount) {
         log.info("Marking player {} LEFT from date {}. Option: {}", playerId, leftDate, option);
@@ -194,15 +170,34 @@ public class PlayerLifecycleService {
             throw new RuntimeException("Warning: Paid bills exist after " + leftDate + ". Refund manually first.");
         }
 
-        // 🔥 2. FIND TARGET BILL (Next Due Bill after Left Date)
-        Installment targetBill = installmentRepository.findFirstByPlayerIdAndDueDateAfterAndStatusNotOrderByDueDateAsc(
-                playerId,
-                leftDate,
-                Installment.Status.PAID
+        // 🔥🔥🔥 FIX START: Target Bill शोधण्याचे नवीन लॉजिक 🔥🔥🔥
+        Installment targetBill = null;
+
+        // Step A: आधी 'Left Date' च्या महिन्याचे बिल शोधा (उदा. Sep बिल)
+        // कारण Due Date (1 Sep) ही Left Date (12 Sep) च्या आधी असू शकते.
+        List<Installment> currentMonthBills = installmentRepository.findByPlayerIdAndPeriodMonthAndPeriodYear(
+                playerId, leftDate.getMonthValue(), leftDate.getYear()
         );
 
+        if (!currentMonthBills.isEmpty()) {
+            Installment candidate = currentMonthBills.get(0);
+            // जर हे बिल PAID नसेल, तर हेच आपले Target Bill आहे.
+            if (candidate.getStatus() != Installment.Status.PAID) {
+                targetBill = candidate;
+                log.info("Found Target Bill (Current Month): {}", targetBill.getId());
+            }
+        }
+
+        // Step B: जर चालू महिन्याचे बिल सापडले नाही (किंवा पेड असेल), तर पुढचे बिल शोधा
+        if (targetBill == null) {
+            targetBill = installmentRepository.findFirstByPlayerIdAndDueDateAfterAndStatusNotOrderByDueDateAsc(
+                    playerId, leftDate, Installment.Status.PAID
+            );
+        }
+        // 🔥🔥🔥 FIX END 🔥🔥🔥
+
         if (targetBill != null) {
-            log.info("Found Target Bill to Update: {} (Due: {})", targetBill.getId(), targetBill.getDueDate());
+            log.info("Processing Target Bill: {} (Due: {})", targetBill.getId(), targetBill.getDueDate());
 
             // A. Update Target Bill
             switch (option) {
@@ -211,9 +206,15 @@ public class PlayerLifecycleService {
                     break;
                 case COLLECT_PARTIAL:
                     if (manualAmount != null && manualAmount >= 0) {
+                        Double oldAmount = targetBill.getAmount();
                         targetBill.setAmount(manualAmount);
                         targetBill.setRemainingAmount(manualAmount - targetBill.getPaidAmount());
-                        targetBill.setNotes("Student Left on " + leftDate + ". Partial Charge: " + manualAmount);
+
+                        // Detailed Note
+                        String note = String.format(" | Student Left on %s. Fee Reduced: %.0f -> %.0f (Refund Diff: %.0f)",
+                                leftDate, oldAmount, manualAmount, (oldAmount - manualAmount));
+
+                        targetBill.setNotes((targetBill.getNotes() != null ? targetBill.getNotes() : "") + note);
                     }
                     break;
                 case WAIVE_OFF:
@@ -225,13 +226,14 @@ public class PlayerLifecycleService {
             }
             installmentRepository.save(targetBill);
 
-            // B. SAFE DELETE (Future Bills)
-            // 🔥 Pass targetBill DueDate to delete everything AFTER it
-            performSafeDelete(playerId, targetBill.getDueDate());
+            // B. SAFE CANCEL (Future Bills)
+            // 🔥 आता आपण Target Bill च्या Due Date नंतरची सर्व बिले कॅन्सल करतोय.
+            // Sep (Due 1 Sep) टारगेट असेल, तर Oct (1 Oct), Nov (1 Nov)... सर्व कॅन्सल होतील.
+            installmentService.cancelFutureBills(playerId, targetBill.getDueDate());
 
         } else {
-            // No target bill found, delete everything after Left Date
-            performSafeDelete(playerId, leftDate);
+            // No target bill found, cancel everything after Left Date
+            installmentService.cancelFutureBills(playerId, leftDate);
         }
 
         // 3. Mark Inactive
@@ -240,26 +242,5 @@ public class PlayerLifecycleService {
         playerRepository.save(player);
     }
 
-    // 🔥🔥🔥 HELPER METHOD FOR SAFE DELETE 🔥🔥🔥
-    private void performSafeDelete(Long playerId, LocalDate afterDate) {
-        // 1. Find bills needed to be deleted
-        List<Installment> billsToDelete = installmentRepository.findFuturePendingBills(playerId, afterDate);
-
-        if (!billsToDelete.isEmpty()) {
-            // 2. Extract IDs
-            List<Long> billIds = billsToDelete.stream()
-                    .map(Installment::getId)
-                    .collect(Collectors.toList());
-
-            // 3. Delete related Payments first (Using existing efficient method)
-            paymentRepository.deleteByInstallmentIds(billIds);
-            log.info("Deleted payments associated with {} future bills.", billIds.size());
-
-            // 4. Now Delete the Bills
-            installmentRepository.deleteAll(billsToDelete);
-            log.info("Deleted {} future bills after date {}", billsToDelete.size(), afterDate);
-        } else {
-            log.info("No future bills found to delete after {}", afterDate);
-        }
-    }
+    // ❌ performSafeDelete function is REMOVED completely.
 }
