@@ -28,6 +28,7 @@ public class InstallmentService {
      * Called by controller to generate monthly installments for all players.
      * dueDateParam should be ISO date string (yyyy-MM-dd).
      */
+    // 2. AUTO / BULK GENERATION
     @Transactional
     public void generateForAllPlayers(int month, int year, String dueDateParam) {
         log.info("Generating monthly installments for {}/{}", month, year);
@@ -46,6 +47,25 @@ public class InstallmentService {
                 log.debug("Installment already exists for player {} month {} year {}", p.getId(), month, year);
                 continue;
             }
+
+            // 🔥🔥🔥 FIX: Check if Player is Inactive (Holiday) 🔥🔥🔥
+            if (!p.getIsActive()) {
+                Installment holidayBill = Installment.builder()
+                        .player(p)
+                        .periodMonth(month)
+                        .periodYear(year)
+                        .amount(0.0)
+                        .paidAmount(0.0)
+                        .remainingAmount(0.0)
+                        .status(Installment.Status.SKIPPED) // Cyan Chip
+                        .notes("Pre-informed Holiday (Auto-Gen)")
+                        .dueDate(dueDate)
+                        .build();
+                installmentRepository.save(holidayBill);
+                log.info("Created SKIPPED bill for inactive player {}", p.getId());
+                continue; // 🔥 Skip normal bill generation logic for this player
+            }
+            // ---------------------------------------------------------
 
             FeeStructure fee = feeStructureService.findEffectiveFeeForGroup(p.getPlayerGroup(), today);
             if (fee == null) {
@@ -70,11 +90,31 @@ public class InstallmentService {
         }
     }
 
+    // 1. MANUAL BILL GENERATION
     @Transactional
     public InstallmentResponseDTO createInstallment(InstallmentRequestDTO req) {
         log.info("Creating installment for player {}", req.getPlayerId());
         Player player = playerRepository.findById(req.getPlayerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Player not found: " + req.getPlayerId()));
+
+        // 🔥🔥🔥 FIX: Check if Player is Inactive (Holiday) 🔥🔥🔥
+        if (!player.getIsActive()) {
+            Installment holidayBill = Installment.builder()
+                    .player(player)
+                    .periodMonth(req.getPeriodMonth())
+                    .periodYear(req.getPeriodYear())
+                    .amount(0.0)
+                    .paidAmount(0.0)
+                    .remainingAmount(0.0)
+                    .status(Installment.Status.SKIPPED) // Cyan Chip
+                    .notes("Holiday/Paused (Manual Gen)")
+                    .dueDate(req.getDueDate())
+                    .build();
+
+            Installment saved = installmentRepository.save(holidayBill);
+            return toDto(saved);
+        }
+        // ---------------------------------------------------------
 
         Double amount = req.getAmount();
         if (amount == null) {
@@ -84,13 +124,12 @@ public class InstallmentService {
             amount = fee.getMonthlyFee();
         }
 
-        // 🔥 Check date immediately
+        // Check date immediately
         LocalDate today = LocalDate.now();
         Installment.Status initialStatus = Installment.Status.PENDING;
 
         if (req.getDueDate().isBefore(today)) {
             initialStatus = Installment.Status.OVERDUE;
-            log.info("Creating bill as OVERDUE since {} is before {}", req.getDueDate(), today);
         }
 
         Installment ins = Installment.builder()
@@ -265,6 +304,7 @@ public class InstallmentService {
         return "Applied holiday extension (" + daysToAdd + " days) to " + list.size() + " players.";
     }
 
+    // 🔥🔥🔥 UPDATED REVERT PAYMENT (Handles Refund Status) 🔥🔥🔥
     @Transactional
     public void revertPayment(Long installmentId) {
         log.info("Reversing payment for installment {}", installmentId);
@@ -276,15 +316,44 @@ public class InstallmentService {
             throw new RuntimeException("Only PAID bills can be reverted.");
         }
 
+        // 1. History Note
+        String historyNote = " | Refunded ₹" + inst.getPaidAmount() + " on " + LocalDate.now();
+
+        // 2. Reset Amounts
         inst.setPaidAmount(0.0);
         inst.setRemainingAmount(inst.getAmount());
-        inst.setStatus(Installment.Status.PENDING);
 
-        String oldNotes = inst.getNotes() != null ? inst.getNotes() : "";
-        inst.setNotes(oldNotes + " | Payment Reverted manually.");
+        // 3. Set Status to REFUNDED (Instead of PENDING) for Accounting History
+        inst.setStatus(Installment.Status.REFUNDED);
+
+        inst.setNotes((inst.getNotes() != null ? inst.getNotes() : "") + historyNote);
 
         installmentRepository.save(inst);
-        log.info("Payment reverted successfully for installment {}", installmentId);
+        log.info("Payment reverted (Refunded) successfully for installment {}", installmentId);
+    }
+
+    // 🔥🔥🔥 NEW: CANCEL FUTURE BILLS (Used by PlayerLifecycleService) 🔥🔥🔥
+    @Transactional
+    public void cancelFutureBills(Long playerId, LocalDate fromDate) {
+        log.info("Cancelling future bills for player {} from date {}", playerId, fromDate);
+
+        // Find bills strictly AFTER the date
+        List<Installment> futureBills = installmentRepository.findFuturePendingBills(playerId, fromDate);
+
+        for (Installment inst : futureBills) {
+            // 🔥 Don't touch PAID or REFUNDED bills
+            if (inst.getStatus() == Installment.Status.PAID || inst.getStatus() == Installment.Status.REFUNDED) {
+                continue;
+            }
+
+            // Mark as CANCELLED
+            inst.setStatus(Installment.Status.CANCELLED);
+            inst.setAmount(0.0);
+            inst.setRemainingAmount(0.0);
+            inst.setNotes("Auto-cancelled: Player Left.");
+
+            installmentRepository.save(inst);
+        }
     }
 
     // 🔥🔥🔥 NEW: Adjust Installment Amount (Discount / Correction) 🔥🔥🔥
