@@ -331,31 +331,43 @@ public class InstallmentService {
         installmentRepository.save(inst);
         log.info("Payment reverted (Refunded) successfully for installment {}", installmentId);
     }
-
-    // 🔥🔥🔥 NEW: CANCEL FUTURE BILLS (Used by PlayerLifecycleService) 🔥🔥🔥
+    // InstallmentService.java
     @Transactional
-    public void cancelFutureBills(Long playerId, LocalDate fromDate) {
-        log.info("Cancelling future bills for player {} from date {}", playerId, fromDate);
+    public void cancelFutureBills(Long playerId, LocalDate fromDate, Long excludeBillId) {
+        log.info("Cancelling future bills for player {} from date {}, Excluding ID: {}",
+                playerId, fromDate, excludeBillId);
 
-        // Find bills strictly AFTER the date
-        List<Installment> futureBills = installmentRepository.findFuturePendingBills(playerId, fromDate);
+        // ज्या बिलांची Due Date fromDate पेक्षा जुनी/समान आहेत त्यांना कॅन्सल करू नका
+        // फक्त भविष्यातील (fromDate नंतरची) बिले कॅन्सल करा
+        List<Installment> futureBills = installmentRepository
+                .findByPlayerIdAndDueDateGreaterThanEqual(playerId, fromDate);
 
         for (Installment inst : futureBills) {
-            // 🔥 Don't touch PAID or REFUNDED bills
-            if (inst.getStatus() == Installment.Status.PAID || inst.getStatus() == Installment.Status.REFUNDED) {
+            // Excluded bill ला सोडा
+            if (excludeBillId != null && excludeBillId.equals(inst.getId())) {
                 continue;
             }
 
-            // Mark as CANCELLED
+            // PAID, REFUNDED, CANCELLED बिले सोडा
+            if (inst.getStatus() == Installment.Status.PAID ||
+                    inst.getStatus() == Installment.Status.REFUNDED ||
+                    inst.getStatus() == Installment.Status.CANCELLED) {
+                continue;
+            }
+
+            // बाकीची बिले कॅन्सल करा
             inst.setStatus(Installment.Status.CANCELLED);
             inst.setAmount(0.0);
             inst.setRemainingAmount(0.0);
-            inst.setNotes("Auto-cancelled: Player Left.");
+            inst.setNotes((inst.getNotes() != null ? inst.getNotes() : "") +
+                    " | Auto-cancelled: Player Left on " + LocalDate.now());
 
             installmentRepository.save(inst);
+            log.info("Cancelled bill ID: {} (Due: {})", inst.getId(), inst.getDueDate());
         }
-    }
 
+        log.info("Total {} future bills cancelled for player {}", futureBills.size(), playerId);
+    }
     // 🔥🔥🔥 NEW: Adjust Installment Amount (Discount / Correction) 🔥🔥🔥
     @Transactional
     public InstallmentResponseDTO adjustInstallmentAmount(Long installmentId, Double newAmount, String adjustmentReason) {

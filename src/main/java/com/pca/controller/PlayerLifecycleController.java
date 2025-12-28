@@ -45,7 +45,17 @@ public class PlayerLifecycleController {
             @RequestParam("option") com.pca.enums.LeftOption option,
             @RequestParam(value = "amount", required = false) Double amount) {
 
-        lifecycleService.markPlayerLeft(id, date, option, amount);
-        return ResponseEntity.ok("Player marked as LEFT successfully");
+        // 🔥 Capture the message from service
+        String message = lifecycleService.markPlayerLeft(id, date, option, amount);
+
+        // 🔥 Send it back to Flutter
+        return ResponseEntity.ok(message);
+    }
+
+    // 🔥 NEW ENDPOINT
+    @PostMapping("/{id}/undo-left")
+    public ResponseEntity<String> undoPlayerLeft(@PathVariable Long id) {
+        lifecycleService.undoPlayerLeft(id);
+        return ResponseEntity.ok("Player Left Status Undone. Player is Active now.");
     }
 }

@@ -22,6 +22,9 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
 
     List<Installment> findByPlayerId(Long playerId);
 
+    // 🔥🔥🔥 NEW METHOD FOR UNDO LOGIC (Add this) 🔥🔥🔥
+    List<Installment> findByPlayerIdAndStatus(Long playerId, Status status);
+
     /**
      * Finds installments whose dueDate is between from (inclusive) and to (inclusive) and remainingAmount > minRemaining.
      * Useful for upcoming and overdue reminder detection.
@@ -51,13 +54,6 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
 
     /**
      * Native query that aggregates payments for each installment using period_month and period_year columns.
-     * <p>
-     * NOTE:
-     * - uses actual DB column names: period_month, period_year, player_id, due_date, amount
-     * - expects payment.installment_id linking to installment.id
-     * - p.join_date assumed to be the column for Player.joinDate
-     * <p>
-     * Parameters: periodMonth (1..12), periodYear (e.g. 2025)
      */
     @Query(value = "SELECT " +
             " p.id AS playerId, " +
@@ -83,7 +79,7 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
 
     List<Installment> findByPlayerIdAndPeriodMonthAndPeriodYear(Long playerId, int periodMonth, int periodYear);
 
-    // native query to get latest period — adapt column names if different in DB mapping
+    // native query to get latest period
     @Query(value = "SELECT i.period_year, i.period_month FROM installment i " +
             "ORDER BY i.period_year DESC, i.period_month DESC LIMIT 1",
             nativeQuery = true)
@@ -175,7 +171,7 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
             "JOIN i.player p " +
             "WHERE (:groupId IS NULL OR p.playerGroup.id = :groupId) " +
             "AND i.status != 'PAID' " +
-            "AND i.dueDate >= :holidayStart") // <-- HE CHANGE KELA (Start Date chya pudhche sagle)
+            "AND i.dueDate >= :holidayStart")
     List<Installment> findForFutureExtension(
             @Param("holidayStart") LocalDate holidayStart,
             @Param("groupId") Integer groupId
@@ -183,17 +179,24 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
 
     /**
      * Finds the absolute last installment generated for a player
-     * (Ordered by Year DESC, Month DESC)
      */
     @Query(value = "SELECT * FROM installment WHERE player_id = :playerId ORDER BY period_year DESC, period_month DESC LIMIT 1", nativeQuery = true)
     Installment findLastByPlayerId(@Param("playerId") Long playerId);
 
 
-    // (Future Paid Bills check - Juna asel tar theva)
-    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId AND i.dueDate > :leftDate AND i.status = 'PAID'")
-    List<Installment> findFuturePaidBills(@Param("playerId") Long playerId, @Param("leftDate") LocalDate leftDate);
-
-    // ✅ NEW (CORRECT): Deletes strictly FUTURE months only
+    // 🔥 FIX: चेक करा की "पुढच्या महिन्याचे" बिल Paid आहे का? (चालू महिन्याचे नाही)
+    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId " +
+            "AND i.status = 'PAID' " +
+            "AND (" +
+            "   (i.periodYear > :year) " +
+            "   OR (i.periodYear = :year AND i.periodMonth > :month)" +
+            ")")
+    List<Installment> findFuturePaidBills(
+            @Param("playerId") Long playerId,
+            @Param("month") int month,
+            @Param("year") int year
+    );
+    // ✅ NEW (CORRECT): Deletes strictly FUTURE months only (This is kept for safety, but we use cancelFutureBills now)
     @Modifying
     @Query("DELETE FROM Installment i WHERE i.player.id = :playerId " +
             "AND i.status != 'PAID' " +
@@ -214,5 +217,21 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
     @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId AND i.dueDate > :targetDate AND i.status != 'PAID'")
     List<Installment> findFuturePendingBills(@Param("playerId") Long playerId, @Param("targetDate") LocalDate targetDate);
 
-}
+    // 🔥 FIX: तारखेनुसार शोधा, पण 'excludeBillId' ला वगळा.
+    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId " +
+            "AND i.dueDate >= :fromDate " +
+            "AND i.status != 'PAID' " +
+            "AND i.status != 'REFUNDED' " +
+            "AND i.id != :excludeBillId")   // 👈 हे सर्वात महत्वाचे!
+    List<Installment> findFuturePendingBillsExcludeTarget(
+            @Param("playerId") Long playerId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("excludeBillId") Long excludeBillId
+    );
 
+    // नवीन Query: fromDate पेक्षा जुनी/समान Due Date ची बिले
+    @Query("SELECT i FROM Installment i WHERE i.player.id = :playerId AND i.dueDate >= :fromDate ORDER BY i.dueDate ASC")
+    List<Installment> findByPlayerIdAndDueDateGreaterThanEqual(
+            @Param("playerId") Long playerId,
+            @Param("fromDate") LocalDate fromDate);
+}
