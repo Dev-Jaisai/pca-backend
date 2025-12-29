@@ -58,4 +58,11 @@ public class PlayerLifecycleController {
         lifecycleService.undoPlayerLeft(id);
         return ResponseEntity.ok("Player Left Status Undone. Player is Active now.");
     }
+
+    // 🔥 NEW ENDPOINT FOR UNDO PAUSE
+    @PostMapping("/{id}/undo-pause")
+    public ResponseEntity<String> undoPause(@PathVariable Long id) {
+        lifecycleService.undoPause(id);
+        return ResponseEntity.ok("Holiday Cancelled! Bill Restored to Pending.");
+    }
 }
