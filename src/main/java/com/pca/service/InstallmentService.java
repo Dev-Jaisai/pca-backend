@@ -304,7 +304,6 @@ public class InstallmentService {
         return "Applied holiday extension (" + daysToAdd + " days) to " + list.size() + " players.";
     }
 
-    // 🔥🔥🔥 UPDATED REVERT PAYMENT (Handles Refund Status) 🔥🔥🔥
     @Transactional
     public void revertPayment(Long installmentId) {
         log.info("Reversing payment for installment {}", installmentId);
@@ -312,24 +311,38 @@ public class InstallmentService {
         Installment inst = installmentRepository.findById(installmentId)
                 .orElseThrow(() -> new RuntimeException("Installment not found"));
 
-        if (inst.getStatus() != Installment.Status.PAID) {
-            throw new RuntimeException("Only PAID bills can be reverted.");
+        // Allow reverting PAID or PARTIALLY_PAID
+        if (inst.getPaidAmount() <= 0) {
+            throw new RuntimeException("No payment to revert.");
         }
 
-        // 1. History Note
-        String historyNote = " | Refunded ₹" + inst.getPaidAmount() + " on " + LocalDate.now();
+        // 🔥 1. Calculate ACTUAL refund amount (Excess paid)
+        // जर फी 500 आणि पेड 3500 असेल, तर 3000 रिफंड.
+        // जर फी 5000 आणि पेड 2000 असेल, तर -3000 (No Refund).
+        double actualRefund = inst.getPaidAmount() - inst.getAmount();
 
-        // 2. Reset Amounts
+        String historyNote;
+
+        // 🔥 2. Status & Note Logic
+        if (actualRefund > 0) {
+            // Case A: Refund Due (पैसे परत करायचे आहेत)
+            historyNote = " | Refunded ₹" + actualRefund + " on " + LocalDate.now();
+            inst.setStatus(Installment.Status.REFUNDED);
+        } else {
+            // Case B: Simple Revert (फक्त पेमेंट अन्डू केले)
+            historyNote = " | Payment Reverted on " + LocalDate.now();
+            inst.setStatus(Installment.Status.PENDING); // बिल परत पेंडिंग करा
+        }
+
+        // 3. Reset Amounts
         inst.setPaidAmount(0.0);
-        inst.setRemainingAmount(inst.getAmount());
+        inst.setRemainingAmount(inst.getAmount()); // पूर्ण फी परत बाकी
 
-        // 3. Set Status to REFUNDED (Instead of PENDING) for Accounting History
-        inst.setStatus(Installment.Status.REFUNDED);
-
+        // 4. Update Notes
         inst.setNotes((inst.getNotes() != null ? inst.getNotes() : "") + historyNote);
 
         installmentRepository.save(inst);
-        log.info("Payment reverted (Refunded) successfully for installment {}", installmentId);
+        log.info("Payment reverted. Actual refund calculated: ₹{}", actualRefund);
     }
     // InstallmentService.java
     @Transactional
