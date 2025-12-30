@@ -77,7 +77,6 @@ public class PaymentService {
         inst.setPaidAmount(newPaid);
         double newRemaining = inst.getAmount() - newPaid;
         inst.setRemainingAmount(Math.max(0.0, newRemaining));
-
         if (newRemaining <= 0.0) {
             inst.setStatus(Status.PAID);
         } else if (newPaid > 0.0) {
@@ -86,6 +85,13 @@ public class PaymentService {
             inst.setStatus(Status.PENDING);
         }
 
+        // 🔥🔥🔥 NEW CODE START (Add this) 🔥🔥🔥
+        // Frontend sends "Refunded amount" in reference, we must save it to Installment Notes
+        if (req.getReference() != null && !req.getReference().isEmpty()) {
+            String newNote = " | " + req.getReference(); // Adds " | Auto-Settled: Refunded ₹3000..."
+            inst.setNotes((inst.getNotes() != null ? inst.getNotes() : "") + newNote);
+        }
+        // 🔥🔥🔥 NEW CODE END 🔥🔥🔥
         installmentRepository.save(inst);
 
         log.info("Updated installment {} paidAmount={} remaining={} status={}", inst.getId(), inst.getPaidAmount(), inst.getRemainingAmount(), inst.getStatus());
